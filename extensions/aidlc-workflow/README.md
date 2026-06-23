@@ -9,15 +9,17 @@ The AI-Driven Development Life Cycle (AIDLC) as a pi extension. State-tracked, f
 | `index.ts` | The extension entry point. Registers the `aidlc` tool (status, start, classify-comments, sync, next) and 7 slash commands. | `~/.pi/agent/extensions/aidlc-workflow/index.ts` (and the parent symlink) |
 | `agents/*.md` | 6 agents: `spec-writer`, `planner`, `implementer`, `reviewer`, `pr-feedback-handler`, `shipper`. | `~/.pi/agent/agents/` |
 | `skills/*/SKILL.md` | 8 skills: the orchestrator + one per phase + state-management. | `~/.pi/agent/skills/` |
-| `commands/*.md` | Slash command templates: `/specify`, `/plan`, `/implement`, `/test`, `/review`, `/ship`, `/aidlc-status`. | (registered via `index.ts` — see below) |
+| `commands.md` | A single standalone skill that documents all 7 slash commands. Decoupled from the TS extension so the workflow still works even if the extension can't load (missing deps, wrong Node). | `~/.pi/agent/skills/aidlc-commands/SKILL.md` |
 
 ## How commands are registered
 
-The `index.ts` calls `pi.registerCommand(name, { description, handler })` for each phase. The handler emits a directive message that hints the user to invoke the corresponding skill (which is auto-loaded based on its description). The actual phase logic lives in the skill + agent.
+The `index.ts` calls `pi.registerCommand(name, { description, handler })` for each phase. The handler invokes the matching skill via `ctx.sendUserMessage("/skill:" + skillName)`. The actual phase logic lives in the skill + agent.
 
 This split exists because:
 - The skill is pure markdown — easy to read, edit, and share
 - The TypeScript extension handles the imperative glue: read state, call `gh`, parse PR comments, dispatch agents
+
+If the TypeScript extension can't load (missing deps, wrong Node version, etc.), the `commands.md` skill still works — it documents the same commands and workflow, decoupled from the TS layer.
 
 ## Why state lives in two places
 

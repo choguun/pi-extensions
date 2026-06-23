@@ -18,10 +18,12 @@ The seven slash commands that drive an AIDLC feature from spec to merge. Each co
 | `/specify` | `specify` | `*` → `specifying` | Starting a new feature; need to write the spec |
 | `/plan` | `plan` | `specifying` → `planning` | Spec is done; need to break into tasks |
 | `/implement T-XXX` | `implement` | `planning` → `implementing` | Implementing one task from the plan |
-| `/test` | `test` | `implementing` → `testing` | Need to verify the build is green |
-| `/review` | `review` | `testing` → `reviewing` (or back to `implementing` if P0s) | Need a code review before ship |
-| `/ship` | `ship` | `reviewing` → `shipping` → `shipped` | All checks green; ready to merge |
+| `/test` | `test` | `testing` → `reviewing` (or back to `implementing` on failures) | Need to verify the build is green |
+| `/review` | `review` | `reviewing` → `shipping` (or back to `implementing` if P0s) | Need a code review before ship |
+| `/ship` | `ship` | `shipping` → `shipped` | All checks green; ready to merge |
 | `/aidlc-status` | `aidlc-workflow` | (no transition) | Need to know the current state |
+
+> **Source of truth:** `skills/state-management/SKILL.md` has the canonical phase-transition table. If `commands.md` disagrees, trust `state-management`.
 
 ## When to use
 

@@ -12,7 +12,7 @@ AGENTS_SRC="$EXT_SRC/agents"
 AGENTS_DST="$HOME/.pi/agent/agents"
 SKILLS_SRC="$EXT_SRC/skills"
 SKILLS_DST="$HOME/.pi/agent/skills"
-COMMANDS_DST="$HOME/.pi/agent/skills"
+COMMANDS_SRC="$EXT_SRC/commands.md"
 
 if [ ! -d "$EXT_SRC" ]; then
   echo "Error: $EXT_SRC does not exist. Run from $REPO_ROOT." >&2
@@ -33,7 +33,7 @@ for f in "$AGENTS_SRC"/*.md; do
   echo "    $name"
 done
 
-# 3. Symlink each skill.
+# 3. Symlink each skill (including the standalone commands.md).
 echo "→ Skills in $SKILLS_DST"
 mkdir -p "$SKILLS_DST"
 for skill in "$SKILLS_SRC"/*/; do
@@ -46,15 +46,17 @@ done
 # 4. Symlink the standalone commands skill (decoupled from the TS extension).
 #    Loads the same workflow as the TS-registered commands, but works even
 #    if the TypeScript extension can't load (e.g. missing deps, wrong Node).
-echo "→ commands.md (standalone)"
-mkdir -p "$SKILLS_DST/aidlc-commands"
-ln -sfn "$EXT_SRC/commands.md" "$SKILLS_DST/aidlc-commands/SKILL.md"
+if [ -f "$COMMANDS_SRC" ]; then
+  echo "→ commands.md (standalone)"
+  mkdir -p "$SKILLS_DST/aidlc-commands"
+  ln -sfn "$COMMANDS_SRC" "$SKILLS_DST/aidlc-commands/SKILL.md"
+fi
 
 # 5. Verify.
 echo ""
 echo "Verification:"
 ls -la "$EXT_DST" 2>&1 | head -2
-ls -la "$AGENTS_DST" | grep "aidlc\|spec-writer\|planner\|implementer\|reviewer\|pr-feedback\|shipper" 2>&1 | head -10
+ls -la "$AGENTS_DST" | grep "spec-writer\|planner\|implementer\|reviewer\|pr-feedback\|shipper" 2>&1 | head -10
 ls -la "$SKILLS_DST" | grep "aidlc\|specify\|plan\|implement\|test\|review\|ship\|state" 2>&1 | head -10
 
 echo ""

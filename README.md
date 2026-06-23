@@ -12,7 +12,7 @@ GitHub (branches + PRs + comments) as the source of truth.
 | `extensions/aidlc-workflow/` | `~/.pi/agent/extensions/aidlc-workflow/` | Main extension: registers the `aidlc` tool + slash commands |
 | `extensions/aidlc-workflow/agents/*.md` | `~/.pi/agent/agents/` | Specialized agents (spec-writer, planner, implementer, reviewer, etc.) |
 | `extensions/aidlc-workflow/skills/*/SKILL.md` | `~/.pi/agent/skills/` | Phase-specific skills (specify, plan, implement, test, review, ship) |
-| `extensions/aidlc-workflow/commands/*.md` | `~/.pi/agent/commands/` | Slash commands (`/specify`, `/plan`, `/implement`, etc.) |
+| `extensions/aidlc-workflow/commands.md` | `~/.pi/agent/skills/aidlc-commands/SKILL.md` | Standalone skill documenting all 7 slash commands (decoupled from the TS extension) |
 
 ## The workflow
 
@@ -61,6 +61,10 @@ for f in extensions/aidlc-workflow/commands/*.md; do
   ln -sf "$(pwd)/$f" ~/.pi/agent/commands/$(basename "$f")
 done
 ```
+
+> Note: as of v0.1, the commands are in `commands.md` (single file) and
+> registered as the skill `aidlc-commands` (symlinked under `skills/`).
+> The `commands/` directory is reserved for future per-command files.
 
 ## Usage
 
