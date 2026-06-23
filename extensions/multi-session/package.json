@@ -1,0 +1,27 @@
+{
+	"name": "multi-session",
+	"version": "0.1.0",
+	"description": "Lets multiple pi sessions on the same machine discover each other and exchange messages. Each session registers in ${agentDir}/runtime/registry.json with a heartbeat; messages flow through per-session mailboxes in ${agentDir}/runtime/mailbox/.",
+	"type": "module",
+	"private": true,
+	"main": "index.ts",
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "npm run typecheck && node --test test/protocol.test.ts test/registry.test.ts test/mailbox.test.ts test/smoke.test.ts",
+		"test:protocol": "node --test test/protocol.test.ts",
+		"test:registry": "node --test test/registry.test.ts",
+		"test:mailbox": "node --test test/mailbox.test.ts",
+		"test:smoke": "node --test test/smoke.test.ts"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "*",
+		"@types/node": "^22.0.0",
+		"typebox": "^1.0.0",
+		"typescript": "^5.5.0"
+	},
+	"dependenciesMeta": {
+		"@earendil-works/pi-coding-agent": {
+			"comments": "Resolved from the user's globally-installed pi package. Set a concrete version range before publishing."
+		}
+	}
+}
