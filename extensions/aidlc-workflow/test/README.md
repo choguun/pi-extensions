@@ -1,14 +1,15 @@
 # AIDLC workflow tests
 
-Five test files, 40+ tests total. All run with Node 24+'s built-in TypeScript stripping — no build step, no `tsc` invocation, no `ts-node`.
+Six test files, 65 tests total. All run with Node 24+'s built-in TypeScript stripping — no build step, no `tsc` invocation, no `ts-node`.
 
 ```
 test/
-├── smoke.test.ts       # 7 end-to-end tests: extension loads, registers tool + commands, status/start actions work
+├── smoke.test.ts       # 9 end-to-end tests: extension loads, registers tool + commands, status/start/verify actions work
 ├── parser.test.ts      # 2 unit tests: state.md parser handles all 6 fields
 ├── classifier.test.ts  # 20 unit tests: PR comment classifier routes to the right phase + priority
 ├── branch.test.ts      # 5 unit tests: detectDefaultBranch handles main/master/trunk/develop/gh-pages
-└── substrate.test.ts   # 6 unit tests: signal parsing, dedup, LOG.md append, domain scaffold validation
+├── substrate.test.ts   # 18 unit tests: signal I/O, dedup, LOG.md append
+└── worktree.test.ts    # 11 unit tests: shellQuote safety, worktree bootstrap, env-file carryover, APFS clone
 ```
 
 ## Run

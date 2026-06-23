@@ -36,3 +36,7 @@ awk '/^## 20/{p=/^## 2026-06/} p' LOG.md
 ## 2026-06-23 · Fusion kickoff: loop-engineer × AIDLC · #aidlc #arch #classifier #state
 What: Adopted loop-engineer knowledge-base substrate. Wrote `ARCHITECTURE.md`, scaffolded `signals/`, `docs/`, `domains/`, `LOG.md`; extracted `classifyComment` to `classifier.ts` (shared between runtime + tests); fixed 3 routing bugs; expanded tests 9→34.
 Refs: [classifier.ts](classifier.ts), [test/classifier.test.ts](test/classifier.test.ts) (new), [ARCHITECTURE.md](ARCHITECTURE.md) (new), [LOG.md](LOG.md) (new).
+
+## 2026-06-23 · Implemented 4 deferred tasks · #aidlc #signal #worktree #verify #entropy
+What: Added `entropy-control` skill (periodic cleanup); wired classifier → signals/ write (new `triage` action via substrate.ts); added worktree discipline to `start` action with APFS-clone node_modules optimization (worktree.ts); added verify-before-PR gate (new `verify` action). Test count: 40 → 66.
+Refs: [substrate.ts](substrate.ts) (new), [worktree.ts](worktree.ts) (new), [skills/entropy-control/](skills/entropy-control/) (new), [test/substrate.test.ts](test/substrate.test.ts) (rewritten), [test/worktree.test.ts](test/worktree.test.ts) (new).
