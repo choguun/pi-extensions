@@ -19,6 +19,8 @@ import { execSync } from "node:child_process";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { classifyComment } from "./classifier.ts";
+import { upsertSignal, listSignals, slugify, classifyCategory, appendLogEntry, formatLogEntry } from "./substrate.ts";
+import { setupWorktree, listWorktrees } from "./worktree.ts";
 
 const AIDLC_DIR = ".aidlc";
 const STATE_FILE = ".aidlc/state.md";
@@ -60,6 +62,17 @@ function exists(p: string): boolean {
 function readFile(p: string): string | null {
 	try {
 		return fs.readFileSync(p, "utf-8");
+	} catch {
+		return null;
+	}
+}
+
+/** Read and parse package.json (Node projects only). Returns null if missing. */
+function readPackageJson(cwd: string): { scripts?: Record<string, string> } | null {
+	const raw = readFile(path.join(cwd, "package.json"));
+	if (!raw) return null;
+	try {
+		return JSON.parse(raw);
 	} catch {
 		return null;
 	}
@@ -358,22 +371,49 @@ export default function (pi: ExtensionAPI) {
 					.slice(0, 50);
 				const branchName = `feat/${slug}`;
 				const defaultBranch = detectDefaultBranch(cwd);
-				const branchResult = tryRun(`git checkout -b ${branchName} ${defaultBranch}`, cwd);
-				if (branchResult === null) {
-					return {
-						content: [
-							{
-								type: "text",
-								text: `Failed to create branch ${branchName} from '${defaultBranch}'. Check that the repo is on a branch with commits and that '${defaultBranch}' exists.`,
-							},
-						],
-						isError: true,
-						details: {},
-					};
+
+				// Worktree discipline (borrowed from loop-engineer):
+				// each feature gets its own worktree so parallel agents
+				// don't collide. Sibling dir `<repo>-worktrees/<branch>`.
+				// Falls back to in-place branch if worktree creation fails
+				// (e.g. no parent write permission).
+				let worktreePath: string | null = null;
+				let worktreeSetupError: string | null = null;
+				try {
+					const wt = setupWorktree({
+						repoRoot: cwd,
+						branch: branchName,
+						baseRef: defaultBranch,
+					});
+					worktreePath = wt.worktreePath;
+				} catch (err) {
+					worktreeSetupError = err instanceof Error ? err.message : String(err);
 				}
 
+				// Fallback path: in-place branch on main checkout.
+				if (worktreePath === null) {
+					const branchResult = tryRun(`git checkout -b ${branchName} ${defaultBranch}`, cwd);
+					if (branchResult === null) {
+						return {
+							content: [
+								{
+									type: "text",
+									text: `Failed to create branch ${branchName} from '${defaultBranch}'. Worktree error: ${worktreeSetupError}. Check that the repo is on a branch with commits and that '${defaultBranch}' exists.`,
+								},
+							],
+							isError: true,
+							details: {},
+						};
+					}
+				}
+
+				// State lives in the original checkout (where .aidlc/state.md
+				// belongs). Worktrees share the .git directory, so commits
+				// from the worktree are visible here.
+				const stateCwd = cwd;
+
 				// Initialize AIDLC state
-				const state = updateAidlcState(cwd, {
+				const state = updateAidlcState(stateCwd, {
 					phase: "specifying",
 					branch: branchName,
 					pr: null,
@@ -399,8 +439,12 @@ export default function (pi: ExtensionAPI) {
 				);
 				const prNum = openPRForBranch(cwd);
 				if (prNum) {
-					updateAidlcState(cwd, { pr: prNum });
+					updateAidlcState(stateCwd, { pr: prNum });
 				}
+
+				const worktreeNote = worktreePath
+					? `- Worktree: \`${worktreePath}\``
+					: `- Worktree: (none — working in main checkout)`;
 
 				return {
 					content: [
@@ -410,6 +454,7 @@ export default function (pi: ExtensionAPI) {
 								`**AIDLC started**`,
 								``,
 								`- Branch: \`${branchName}\``,
+								worktreeNote,
 								`- PR: ${prNum ? `#${prNum}` : "(not created — try manually)"}`,
 								`- Phase: specifying`,
 								``,
@@ -417,7 +462,7 @@ export default function (pi: ExtensionAPI) {
 							].join("\n"),
 						},
 					],
-					details: { branch: branchName, pr: prNum, state },
+					details: { branch: branchName, pr: prNum, worktreePath, state },
 				};
 			}
 
@@ -475,6 +520,93 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			if (action === "triage") {
+				// Bridge: classifier → signals/. For each classified
+				// PR comment, slugify the body and either create a new
+				// signal or update an existing one (bump frequency,
+				// append Timeline). Same dedup contract as
+				// `signal-triage/SKILL.md`.
+				const state = readAidlcState(cwd);
+				if (!state.pr) {
+					return {
+						content: [{ type: "text", text: "No open PR. Run `/aidlc start` first or set the PR number." }],
+						isError: true,
+						details: {},
+					};
+				}
+				const ctx = getPRContext(cwd, state.pr);
+				if (!ctx || ctx.comments.length === 0) {
+					return {
+						content: [{ type: "text", text: `No comments on PR #${state.pr} to triage.` }],
+						details: { created: 0, updated: 0 },
+					};
+				}
+
+				const domain = path.basename(cwd);
+				let created = 0;
+				let updated = 0;
+				const results: string[] = [];
+
+				for (const c of ctx.comments) {
+					const classification = classifyComment(c.body, c.author);
+					// Skip pure style nits from automatic triage — they
+					// pollute the signal pool. Style fixes go in the PR
+					// review, not the knowledge base.
+					if (classification.priority === "P2" && classification.reason.includes("Style")) {
+						continue;
+					}
+					const slug = slugify(`${classification.reason} ${c.body.slice(0, 100)}`);
+					const sourceUrl = `https://github.com/${state.pr}`;
+					const { signal, created: wasCreated } = upsertSignal(cwd, slug, {
+						category: classifyCategory(classification.reason),
+						sources: [sourceUrl],
+						domain: [domain],
+						classification,
+						body: c.body,
+					});
+					if (wasCreated) created++;
+					else updated++;
+					results.push(`${wasCreated ? "+" : "~"} ${slug} (P${signal.priority.slice(1)}, freq=${signal.frequency}, ${classification.reason})`);
+				}
+
+				// Append to LOG.md if anything changed
+				if (created + updated > 0) {
+					const logPath = path.join(cwd, "LOG.md");
+					if (fs.existsSync(logPath)) {
+						appendLogEntry(
+							logPath,
+							formatLogEntry({
+								date: new Date().toISOString().slice(0, 10),
+								title: `Triaged ${created + updated} signals for ${domain}`,
+								tags: ["signal", "aidlc"],
+								what: `${created} new signals + ${updated} updated (frequency bumped).`,
+								refs: ["signals/"],
+							}),
+						);
+					}
+				}
+
+				return {
+					content: [
+						{
+							type: "text",
+							text: [
+								`**Triage results for PR #${state.pr}**`,
+								``,
+								`Created: ${created}`,
+								`Updated: ${updated}`,
+								``,
+								...results.slice(0, 20),
+								results.length > 20 ? `... (${results.length - 20} more)` : "",
+							]
+								.filter(Boolean)
+								.join("\n"),
+						},
+					],
+					details: { created, updated, total: results.length, domain },
+				};
+			}
+
 			if (action === "next") {
 				const state = readAidlcState(cwd);
 				const phaseCommands: Record<string, string> = {
@@ -523,6 +655,88 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: {},
+				};
+			}
+
+			if (action === "verify") {
+				// Verify-before-PR gate (borrowed from loop-engineer's
+				// `/pr` skill). Run the project's local checks — typecheck,
+				// lint, tests. Only open a PR if all pass.
+				//
+				// We intentionally run lightweight, scoped checks (not a
+				// full build) so verification is fast. The full e2e
+				// verification (driving the running app) is delegated to
+				// the target repo's own /pr skill if it has one — see the
+				// `hasPrSkill` note in setup-codebase-harness.
+				const pkg = readPackageJson(cwd);
+				const checks: Array<{ name: string; cmd: string; ok: boolean; note?: string }> = [];
+
+				if (pkg?.scripts?.["typecheck"]) {
+					const out = tryRun("npm run typecheck 2>&1", cwd);
+					checks.push({
+						name: "typecheck",
+						cmd: "npm run typecheck",
+						ok: out !== null,
+						note: out ?? "command exited non-zero",
+					});
+				} else if (pkg?.scripts?.["build"]) {
+					const out = tryRun("npm run build 2>&1", cwd);
+					checks.push({
+						name: "build",
+						cmd: "npm run build",
+						ok: out !== null,
+						note: out ?? "command exited non-zero",
+					});
+				} else {
+					checks.push({
+						name: "typecheck-or-build",
+						cmd: "(none)",
+						ok: false,
+						note: "package.json has no typecheck or build script",
+					});
+				}
+
+				if (pkg?.scripts?.["test"]) {
+					const out = tryRun("npm test 2>&1", cwd);
+					checks.push({
+						name: "test",
+						cmd: "npm test",
+						ok: out !== null,
+						note: out ?? "command exited non-zero",
+					});
+				} else {
+					checks.push({ name: "test", cmd: "(none)", ok: false, note: "package.json has no test script" });
+				}
+
+				if (pkg?.scripts?.["lint"]) {
+					const out = tryRun("npm run lint 2>&1", cwd);
+					checks.push({
+						name: "lint",
+						cmd: "npm run lint",
+						ok: out !== null,
+						note: out ?? "command exited non-zero",
+					});
+				}
+
+				const passed = checks.every((c) => c.ok);
+				const summary = passed
+					? "All checks passed — safe to /ship."
+					: `${checks.filter((c) => !c.ok).length} check(s) failed — fix before /ship.`;
+
+				return {
+					content: [
+						{
+							type: "text",
+							text: [
+								`**Verify-before-PR gate**`,
+								``,
+								...checks.map((c) => `- ${c.ok ? "✔" : "✖"} ${c.name}: ${c.cmd}${c.note ? ` (${c.note.slice(0, 100)})` : ""}`),
+								``,
+								`**${summary}**`,
+							].join("\n"),
+						},
+					],
+					details: { passed, checks },
 				};
 			}
 
