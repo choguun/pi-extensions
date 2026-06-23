@@ -45,6 +45,11 @@ interface RegisteredCommand {
 class MockExtensionAPI {
 	readonly tools = new Map<string, RegisteredTool>();
 	readonly commands = new Map<string, RegisteredCommand>();
+	readonly sentMessages: string[] = [];
+
+	sendUserMessage(message: string): void {
+		this.sentMessages.push(message);
+	}
 
 	registerTool(tool: RegisteredTool): void {
 		this.tools.set(tool.name, tool);
@@ -295,7 +300,7 @@ test("/aidlc start creates a branch and draft PR state", async () => {
 	}
 });
 
-test("slash command handlers exist and return a directive message", async () => {
+test("slash command handlers invoke the matching skill via sendUserMessage", async () => {
 	const pi = new MockExtensionAPI();
 	const activate = await loadExtension();
 	activate(pi);
@@ -303,12 +308,28 @@ test("slash command handlers exist and return a directive message", async () => 
 	for (const name of ["specify", "plan", "implement", "test", "review", "ship", "aidlc-status"]) {
 		const cmd = pi.commands.get(name)!;
 		assert.ok(cmd, `command /${name} should exist`);
-		// Each command handler returns either a string or a list of content items
-		const handlerResult = cmd.handler("test args", { cwd: process.cwd(), hasUI: false, ui: undefined as never });
-		// The handler may be async; handle both
-		if (handlerResult instanceof Promise) {
-			const resolved = await handlerResult;
-			assert.ok(resolved, `command /${name} should return something`);
-		}
+
+		// Mock ctx — minimal shape that satisfies the handler. The actual
+		// invocation happens via `pi.sendUserMessage()` (we spy on the
+		// MockExtensionAPI instance), NOT via the ctx.
+		const ctx = {
+			cwd: process.cwd(),
+			hasUI: false,
+			ui: {
+				notify: () => {},
+			},
+			isIdle: () => true,
+		};
+
+		// Reset the sent-messages buffer for each command so we can assert
+		// each command sends exactly one message.
+		pi.sentMessages.length = 0;
+
+		await cmd.handler("test args", ctx);
+		assert.equal(pi.sentMessages.length, 1, `command /${name} should call sendUserMessage exactly once`);
+		assert.ok(
+			pi.sentMessages[0].startsWith(`/${name}`),
+			`command /${name} should send a directive starting with /${name}, got: ${pi.sentMessages[0]}`,
+		);
 	}
 });

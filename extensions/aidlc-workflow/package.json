@@ -7,8 +7,11 @@
   "main": "index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/smoke.test.ts",
-    "test:smoke": "node --test test/smoke.test.ts"
+    "test": "npm run typecheck && node --test test/smoke.test.ts test/parser.test.ts test/classifier.test.ts test/branch.test.ts",
+    "test:smoke": "node --test test/smoke.test.ts",
+    "test:parser": "node --test test/parser.test.ts",
+    "test:classifier": "node --test test/classifier.test.ts",
+    "test:branch": "node --test test/branch.test.ts"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "*",
