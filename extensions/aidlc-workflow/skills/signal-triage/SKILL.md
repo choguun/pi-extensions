@@ -1,6 +1,6 @@
 ---
 name: signal-triage
-description: Triage incoming PR comments into the signals/ knowledge base. For each comment, route it via the classifier (classifier.ts), then either create a new signal file (with frequency: 1) or update an existing signal (bump frequency, append Timeline entry). Use after running /aidlc classify-comments, when a batch of PR comments has accumulated, or as a scheduled cron to keep the signals/ pool fresh.
+description: Triage incoming PR comments into the signals/ knowledge base. For each comment, route it via the classifier (classifier.ts), then either create a new signal file (with frequency 1) or update an existing signal (bump frequency, append Timeline entry). Use after running /aidlc classify-comments, when a batch of PR comments has accumulated, or as a scheduled cron to keep the signals/ pool fresh.
 ---
 
 # signal-triage — turn PR comments into deduped signals

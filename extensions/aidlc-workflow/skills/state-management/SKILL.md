@@ -1,6 +1,6 @@
 ---
 name: state-management
-description: How AIDLC state is read, written, and persisted across sessions. State lives in two places: local (`.aidlc/state.md`) and remote (GitHub branch + PR). The two can drift; the `aidlc` tool reconciles them.
+description: How AIDLC state is read, written, and persisted across sessions. State lives in two places — local (`.aidlc/state.md`) and remote (GitHub branch + PR). The two can drift; the `aidlc` tool reconciles them.
 ---
 
 # AIDLC State Management

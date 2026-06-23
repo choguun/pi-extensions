@@ -1,6 +1,6 @@
 ---
 name: setup-codebase-harness
-description: Master skill — set up the full agent harness for any repo so an agent can work it reliably: legible (map-not-manual docs + custom lints), executable (one-command dev stack), verifiable (e2e gate + a verify-before-ship loop), plus commit hygiene and entropy control. Use when onboarding a new/unfamiliar codebase to agent-driven development — "set up the harness", "make this repo agent-ready", "harness this codebase".
+description: Master skill — set up the full agent harness for any repo so an agent can work it reliably. The repo must be legible (map-not-manual docs + custom lints), executable (one-command dev stack), verifiable (e2e gate + a verify-before-ship loop), plus commit hygiene and entropy control. Use when onboarding a new/unfamiliar codebase to agent-driven development — "set up the harness", "make this repo agent-ready", "harness this codebase".
 user_invocable: true
 ---
 

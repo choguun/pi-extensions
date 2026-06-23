@@ -1,6 +1,6 @@
 ---
 name: entropy-control
-description: Periodic cleanup of accumulated entropy in the repo — stale branches, stale worktrees, dead code, drifted docs. Use as a weekly cron, after a sprint ends, or when the repo "feels heavy" (slow git, lots of unmerged branches, AGENTS.md out of sync with reality). Honest output: report what was deleted, what was kept, what couldn't be cleaned automatically (with reason).
+description: Periodic cleanup of accumulated entropy in the repo — stale branches, stale worktrees, dead code, drifted docs. Use as a weekly cron, after a sprint ends, or when the repo "feels heavy" (slow git, lots of unmerged branches, AGENTS.md out of sync with reality). Output honestly — report what was deleted, what was kept, what couldn't be cleaned automatically (with reason).
 ---
 
 # entropy-control — keep the repo from rotting
