@@ -1,13 +1,14 @@
 # AIDLC workflow tests
 
-Four test files, 34 tests total. All run with Node 24+'s built-in TypeScript stripping — no build step, no `tsc` invocation, no `ts-node`.
+Five test files, 40+ tests total. All run with Node 24+'s built-in TypeScript stripping — no build step, no `tsc` invocation, no `ts-node`.
 
 ```
 test/
-├── smoke.test.ts      # 7 end-to-end tests: extension loads, registers tool + commands, status/start actions work
-├── parser.test.ts     # 2 unit tests: state.md parser handles all 6 fields
-├── classifier.test.ts # 20 unit tests: PR comment classifier routes to the right phase + priority
-└── branch.test.ts     # 5 unit tests: detectDefaultBranch handles main/master/trunk/develop/gh-pages
+├── smoke.test.ts       # 7 end-to-end tests: extension loads, registers tool + commands, status/start actions work
+├── parser.test.ts      # 2 unit tests: state.md parser handles all 6 fields
+├── classifier.test.ts  # 20 unit tests: PR comment classifier routes to the right phase + priority
+├── branch.test.ts      # 5 unit tests: detectDefaultBranch handles main/master/trunk/develop/gh-pages
+└── substrate.test.ts   # 6 unit tests: signal parsing, dedup, LOG.md append, domain scaffold validation
 ```
 
 ## Run
@@ -28,11 +29,15 @@ npm run test:classifier
 # Just branch
 npm run test:branch
 
+# Just substrate
+npm run test:substrate
+
 # Or directly with node (no npm script required)
 node --experimental-strip-types --test test/smoke.test.ts
 node --experimental-strip-types --test test/parser.test.ts
 node --experimental-strip-types --test test/classifier.test.ts
 node --experimental-strip-types --test test/branch.test.ts
+node --experimental-strip-types --test test/substrate.test.ts
 ```
 
 ## What each file covers
@@ -76,6 +81,15 @@ Unit test for the `parseState` function. Two cases:
 - `gh-pages` style repo → returns `gh-pages`
 
 The point: the start action creates the feature branch *from* the default branch. If we hardcode "main" and the repo uses "trunk", the branch is created from the wrong ancestor.
+
+### `substrate.test.ts` — knowledge-base I/O
+
+6 unit tests for the I/O primitives that back the loop-engineer fusion:
+- `parseSignal` extracts frontmatter (kind, category, frequency, sources, domain, status, phase, priority), body, and `## Timeline` entries
+- Handles empty Timeline (no entries yet)
+- Signal dedup: 3 PR comments hitting the same slug → 1 signal with `frequency: 3`
+- LOG.md append: first entry has no leading blank; subsequent entries do
+- Domain scaffold validation: README.md + `.aidlc/state.md` both required
 
 ## Why `--experimental-strip-types`?
 
