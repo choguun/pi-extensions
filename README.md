@@ -186,5 +186,3 @@ Inspired by:
 - [`choguun/agent-skills`](https://github.com/choguun/agent-skills) — 23 AIDLC skills
 - [`jasonzhou1993/loop-engineer-template`](https://github.com/jasonzhou1993/loop-engineer-template) — the knowledge-base substrate (signals/docs/domains/LOG.md), worktree discipline, `new-loop` + `setup-codebase-harness` skills
 - The [pi extension example](https://github.com/earendil-works/pi-coding-agent/tree/main/examples/extensions) — the API
-- Real-world experience shipping the Omi Desktop "Make Omi Fast" track (see
-  `/Users/choguun/Documents/Obsidian Vault/Projects/Omi/`)
