@@ -157,7 +157,14 @@ export function removeWorktree(repoRoot: string, worktreePath: string, force = f
  * Returns the list of copied relative paths.
  */
 function carryOverEnvFiles(repoRoot: string, worktreePath: string): string[] {
-	const listed = run("git ls-files --others --ignored --exclude-standard", repoRoot);
+	// `--directory`: collapse `node_modules/`, `.next/`, etc. into single
+	// directory entries so the output stays small (otherwise a pnpm
+	// `node_modules/.pnpm/*` tree overflows the execSync pipe buffer
+	// and the spawn fails with ENOBUFS before the .env copy happens).
+	const listed = run(
+		"git ls-files --others --ignored --exclude-standard --directory",
+		repoRoot,
+	);
 	if (!listed) return [];
 	const envFiles = listed
 		.split("\n")

@@ -19,63 +19,88 @@ Read it first if you haven't this session.
 
 - **Main extension:** `extensions/aidlc-workflow/` — TypeScript extension
   that registers the `aidlc` tool (7 actions) and 7 slash commands.
-- **Knowledge base:** same folder, with `signals/`, `docs/`, `domains/`,
-  `LOG.md` — the loop-engineer fusion that makes work compound across
-  projects.
+- **Multi-session extension:** `extensions/multi-session/` — lets multiple
+  pi processes on the same machine discover each other and exchange
+  messages. Process registry + per-session mailboxes in
+  `${agentDir}/runtime/`. Exposes `pi_sessions`, `pi_send`, `pi_who`
+  tools + `/who`, `/sessions`, `/send` commands.
+- **Knowledge base:** same folder as AIDLC, with `signals/`, `docs/`,
+  `domains/`, `LOG.md` — the loop-engineer fusion that makes work
+  compound across projects.
 - **Skills:** `extensions/aidlc-workflow/skills/*/SKILL.md` — 12 skills
-  (6 phase + 6 meta).
+  (6 phase + 6 meta). `extensions/multi-session/commands.md` is exposed
+  as a fallback skill at install.
 - **Agents:** `extensions/aidlc-workflow/agents/*.md` — 6 specialized
   agents (spec-writer, planner, implementer, reviewer, pr-feedback-handler,
   shipper).
-- **Tests:** `extensions/aidlc-workflow/test/` — 66 tests, all passing,
-  6 files. Run with `cd extensions/aidlc-workflow && npm test`.
+- **Tests:** `extensions/aidlc-workflow/test/` — 66 tests. Run with
+  `cd extensions/aidlc-workflow && npm test`. `extensions/multi-session/test/`
+  — 62 tests. Run with `cd extensions/multi-session && npm test`.
 
 ## Repo map (1 line per directory)
 
 | Path | What |
 |---|---|
-| `extensions/aidlc-workflow/` | The main extension (everything lives here) |
+| `extensions/aidlc-workflow/` | The AIDLC workflow extension (everything lives here) |
 | `extensions/aidlc-workflow/skills/` | 12 SKILL.md files (one per skill) |
 | `extensions/aidlc-workflow/agents/` | 6 agent files |
 | `extensions/aidlc-workflow/signals/` | Evidence pool (PR comments, deduped) |
 | `extensions/aidlc-workflow/docs/` | Durable knowledge (decisions, learnings) |
 | `extensions/aidlc-workflow/domains/` | One folder per project (loop) |
 | `extensions/aidlc-workflow/test/` | 6 test files, 66 tests |
-| `install.sh` | Symlinks everything into `~/.pi/agent/` |
+| `extensions/multi-session/` | Cross-session IPC extension (registry + mailboxes) |
+| `extensions/multi-session/protocol.ts` | Message types, identity, addressing helpers |
+| `extensions/multi-session/registry.ts` | Process registry (heartbeat, stale prune) |
+| `extensions/multi-session/mailbox.ts` | Per-session message log (append, poll, mark) |
+| `extensions/multi-session/test/` | 4 test files, 62 tests |
+| `install.sh` | Symlinks every extension under `extensions/*` into `~/.pi/agent/` |
 
 ## Build & run
 
 ```bash
-# Install (one-time, after clone)
+# Install (one-time, after clone) — handles every extension in extensions/*/
 bash install.sh
 
-# Run all tests
+# Run all tests (AIDLC)
 cd extensions/aidlc-workflow
 npm install --no-save typebox    # one-time, only test dep
 npm test                         # typecheck + 66 tests, takes ~1s
+
+# Run all tests (multi-session)
+cd ../multi-session
+npm install --no-save typebox @earendil-works/pi-coding-agent @types/node typescript   # one-time
+npm test                         # typecheck + 62 tests, takes ~21s (uses 100ms inbox poll)
 ```
 
-The extension runs TypeScript directly via Node 24's
+The extensions run TypeScript directly via Node 24's
 `--experimental-strip-types` — **no build step**. Edit `.ts` files,
 restart pi, the new code loads.
 
 ## Code conventions
 
-### TypeScript (extensions/aidlc-workflow/*.ts)
+### TypeScript (extensions/*/*.ts)
 
 - **No in-function imports.** All imports at module top level.
-- **Module split:** `index.ts` (orchestrator) + `classifier.ts` (PR-comment
-  routing) + `substrate.ts` (signals/LOG.md I/O) + `worktree.ts`
-  (worktree bootstrap). Don't put logic in `index.ts` that belongs in a
-  module.
-- **Atomic writes.** Use the `.tmp + rename` pattern (see `substrate.ts`
-  `writeSignal` and `index.ts` `writeAidlcState`). A crash mid-write must
-  not leave a half-written file.
+- **Module split:** keep `index.ts` thin. Logic goes in
+  `<name>.ts` modules. For multi-session: `protocol.ts` (types),
+  `registry.ts` (process registry), `mailbox.ts` (message I/O).
+- **Atomic writes.** Use the `.tmp + rename` pattern (see AIDLC
+  `substrate.ts` `writeSignal` and multi-session `registry.ts`
+  `writeRegistry`). A crash mid-write must not leave a half-written file.
 - **POSIX shell escaping.** When embedding LLM-supplied strings in shell
-  commands, use `shellQuote()` from `worktree.ts`. Never `exec` raw input.
-- **APFS detection.** `worktree.ts` `detectApfs()` uses `stat -f%Ht /` —
-  APFS magic = 0x4827. Fall back to `pnpm/npm install` on non-APFS or
-  when lockfiles differ.
+  commands, use `shellQuote()` from AIDLC `worktree.ts`. Never `exec`
+  raw input.
+- **APFS detection.** AIDLC `worktree.ts` `detectApfs()` uses
+  `stat -f%Ht /` — APFS magic = 0x4827. Fall back to `pnpm/npm install`
+  on non-APFS or when lockfiles differ.
+- **TypeBox enums.** Use `Type.String({ description: "..." })` with
+  a description listing valid values. Don't import `StringEnum` from
+  `@earendil-works/pi-ai` (transitive dep only).
+- **Tool return shape.** TypeScript can't infer union types for
+  `registerTool().execute()` return values when error vs success
+  branches have different `details` shapes. Either: (a) declare a
+  single union-friendly details type and use a helper, or (b) cast
+  the return. Both AIDLC and multi-session use the helper pattern.
 
 ### Markdown (skills, docs, ARCHITECTURE, LOG)
 
@@ -139,6 +164,37 @@ restart pi, the new code loads.
 1. Add the case in `index.ts` `execute()` (search for `if (action ===`).
 2. Add tests in `test/smoke.test.ts` (use the existing `MockExtensionAPI`).
 3. Document in `commands.md` so the slash-command reference stays current.
+
+## Multi-session extension conventions
+
+- **Three modules, one orchestrator.** Don't put I/O in `protocol.ts`
+  (pure types/helpers only) or in `index.ts` (extension entry only).
+  New behavior goes in `registry.ts` or `mailbox.ts`.
+- **Addressing is by id prefix, name, or case-insensitive name.**
+  `resolveSessionRef()` does this — never write a custom resolver in a
+  tool/command.
+- **Heartbeat interval is 10s, stale threshold is 30s.** Changing these
+  changes the time it takes for dead sessions to be reaped; both numbers
+  are constants in `protocol.ts`. Document any change in `README.md`.
+- **Mailbox poll interval is 2s, override with `PI_MULTI_SESSION_POLL_MS`.**
+  Tests set the env var to 100ms so the watcher is fast.
+- **Self-send is forbidden.** `pi_send` rejects it; don't bypass this in
+  a tool just because it's "useful" — it creates infinite loops.
+- **Inbox is JSONL append-only.** Mark processed in place; don't delete
+  the line. The `seenIds` set in `index.ts` prevents re-injection across
+  polls. The TTL filter on `readMessages()` prevents old processed
+  messages from being re-injected after a restart.
+
+## Adding a new multi-session tool/command
+
+1. Add the tool in `extensions/multi-session/index.ts` (use the
+   `sendError`/`sendOk` helpers for pi_send-style tools, or a
+   dedicated details-type interface for new tools).
+2. If it needs a new message type, add it to `MessageType` in
+   `protocol.ts` and route it in `deliverMessage()` in `index.ts`.
+3. Add tests in `test/smoke.test.ts` (the MockExtensionAPI is reusable).
+4. Document in `commands.md` (slash command) and in the tool's
+   `description` (LLM-callable).
 
 ## Knowledge-base I/O
 
