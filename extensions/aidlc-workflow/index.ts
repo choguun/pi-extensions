@@ -18,6 +18,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { classifyComment } from "./classifier.ts";
 
 const AIDLC_DIR = ".aidlc";
 const STATE_FILE = ".aidlc/state.md";
@@ -143,7 +144,14 @@ function readAidlcState(cwd: string): AidlcState {
 }
 
 function writeAidlcState(cwd: string, state: AidlcState): void {
-	writeFile(path.join(cwd, STATE_FILE), renderState(state));
+	// Atomic write: write to a .tmp file in the same directory, then
+	// rename. If the process crashes mid-write, the user still has the
+	// old state.md intact. `rename` is atomic on POSIX when src/dst are
+	// on the same filesystem (same dir is guaranteed here).
+	const target = path.join(cwd, STATE_FILE);
+	const tmp = target + ".tmp";
+	writeFile(tmp, renderState(state));
+	fs.renameSync(tmp, target);
 }
 
 function updateAidlcState(cwd: string, updates: Partial<AidlcState>): AidlcState {
@@ -156,6 +164,29 @@ function updateAidlcState(cwd: string, updates: Partial<AidlcState>): AidlcState
 // =============================================================================
 // GitHub integration
 // =============================================================================
+
+/**
+ * Detect the default branch of the repo.
+ *
+ * Tries, in order:
+ *   1. `git symbolic-ref refs/remotes/origin/HEAD` — what `gh repo view`
+ *      would return, set by `gh repo set-default`.
+ *   2. The current branch (e.g. user is on main when starting a feature).
+ *   3. Literal `"main"` — the historical default in git itself.
+ *
+ * Different repos use different defaults (main, master, trunk, develop,
+ * gh-pages, etc.). Don't hardcode.
+ */
+export function detectDefaultBranch(cwd: string): string {
+	return (
+		tryRun("git symbolic-ref refs/remotes/origin/HEAD", cwd)?.replace(
+			"refs/remotes/origin/",
+			"",
+		) ??
+		currentBranch(cwd) ??
+		"main"
+	);
+}
 
 /** Get the current branch (or null if detached). */
 function currentBranch(cwd: string): string | null {
@@ -183,20 +214,31 @@ function getPRContext(cwd: string, prNumber: string): {
 	if (!json) return null;
 	const meta = JSON.parse(json);
 
-	// Issue comments
-	const issueCommentsJson = gh(`api repos/:owner/:repo/issues/${prNumber}/comments --paginate`, cwd);
+	// Issue comments. `--paginate --slurp` returns a JSON array of arrays
+	// (`[[page1], [page2], …]`); `--paginate` alone concatenates raw JSON
+	// which produces `}][{` between pages and silently fails JSON.parse
+	// for any PR with >30 (default page size) comments.
+	const issueCommentsJson = gh(
+		`api repos/:owner/:repo/issues/${prNumber}/comments --paginate --slurp`,
+		cwd,
+	);
 	let issueComments: Array<{ author: { login: string }; body: string; created_at: string }> = [];
 	try {
-		issueComments = JSON.parse(issueCommentsJson ?? "[]");
+		const pages = JSON.parse(issueCommentsJson ?? "[]");
+		issueComments = Array.isArray(pages) ? pages.flat() : [];
 	} catch {
 		issueComments = [];
 	}
 
-	// Review comments (on the diff)
-	const reviewCommentsJson = gh(`api repos/:owner/:repo/pulls/${prNumber}/comments --paginate`, cwd);
+	// Review comments (on the diff) — same `--slurp` fix.
+	const reviewCommentsJson = gh(
+		`api repos/:owner/:repo/pulls/${prNumber}/comments --paginate --slurp`,
+		cwd,
+	);
 	let reviewComments: Array<{ user: { login: string }; body: string; created_at: string }> = [];
 	try {
-		reviewComments = JSON.parse(reviewCommentsJson ?? "[]");
+		const pages = JSON.parse(reviewCommentsJson ?? "[]");
+		reviewComments = Array.isArray(pages) ? pages.flat() : [];
 	} catch {
 		reviewComments = [];
 	}
@@ -224,52 +266,6 @@ function getPRContext(cwd: string, prNumber: string): {
 	};
 }
 
-/** Classify a comment into a routing action. */
-function classifyComment(
-	body: string,
-	author: string,
-): { phase: string; priority: "P0" | "P1" | "P2"; reason: string } {
-	const lower = body.toLowerCase();
-
-	// Test failure
-	if (/\b(test|tests|spec|build|failing|failed|failure)\b/.test(lower) && /\b(fail|broken|error)\b/.test(lower)) {
-		return { phase: "test", priority: "P1", reason: "Test/build failure mentioned" };
-	}
-
-	// Test/coverage request
-	if (/\b(add|need|missing|where).*(test|coverage|spec)\b/.test(lower)) {
-		return { phase: "test", priority: "P1", reason: "Test/coverage missing" };
-	}
-
-	// Real bug
-	if (/\b(bug|broken|race|leak|crash|overflow|panic|null pointer)\b/.test(lower)) {
-		return { phase: "implement", priority: "P0", reason: "Real bug reported" };
-	}
-
-	// Security
-	if (/\b(security|cve|injection|xss|csrf|vuln)\b/.test(lower)) {
-		return { phase: "implement", priority: "P0", reason: "Security issue" };
-	}
-
-	// Spec/requirements
-	if (/\b(spec|requirement|missing requirement|out of scope|scope creep)\b/.test(lower)) {
-		return { phase: "specify", priority: "P1", reason: "Spec/requirements issue" };
-	}
-
-	// Architecture/design
-	if (/\b(design|architect|refactor|abstraction|coupling|simplif)\b/.test(lower)) {
-		return { phase: "implement", priority: "P2", reason: "Design/refactor suggestion" };
-	}
-
-	// Style/nit
-	if (/\b(nit|naming|comment|typo|doc|style|format)\b/.test(lower)) {
-		return { phase: "implement", priority: "P2", reason: "Style nit" };
-	}
-
-	// Default: needs human review
-	return { phase: "review", priority: "P2", reason: "Needs human classification" };
-}
-
 // =============================================================================
 // Commands
 // =============================================================================
@@ -282,6 +278,7 @@ const PhaseSchema = Type.Union([
 	Type.Literal("testing"),
 	Type.Literal("reviewing"),
 	Type.Literal("shipping"),
+	Type.Literal("shipped"),
 ]);
 
 const AidlcParams = Type.Object({
@@ -347,28 +344,31 @@ export default function (pi: ExtensionAPI) {
 					return {
 						content: [{ type: "text", text: "Error: `feature` is required for `start`. Usage: /aidlc start \"Add rate limiting to API\"" }],
 						isError: true,
+						details: {},
 					};
 				}
 
-				// Create branch from main. `tryRun` returns `null` on failure
-				// (e.g. branch already exists, no commits, no main). An empty
-				// string is success with no output — do NOT treat it as failure.
+				// Create branch from the default branch. Detect the default
+				// dynamically (some repos use `master`, some `main`, some
+				// `trunk`, some `develop`) so this works in any repo.
 				const slug = feature
 					.toLowerCase()
 					.replace(/[^a-z0-9]+/g, "-")
 					.replace(/^-+|-+$/g, "")
 					.slice(0, 50);
 				const branchName = `feat/${slug}`;
-				const branchResult = tryRun(`git checkout -b ${branchName} main`, cwd);
+				const defaultBranch = detectDefaultBranch(cwd);
+				const branchResult = tryRun(`git checkout -b ${branchName} ${defaultBranch}`, cwd);
 				if (branchResult === null) {
 					return {
 						content: [
 							{
 								type: "text",
-								text: `Failed to create branch ${branchName}. Did you commit your changes and is 'main' the default branch?`,
+								text: `Failed to create branch ${branchName} from '${defaultBranch}'. Check that the repo is on a branch with commits and that '${defaultBranch}' exists.`,
 							},
 						],
 						isError: true,
+						details: {},
 					};
 				}
 
@@ -381,9 +381,20 @@ export default function (pi: ExtensionAPI) {
 					notes: feature,
 				});
 
-				// Create draft PR so the rest of the workflow can update it
+				// Create draft PR so the rest of the workflow can update it.
+// SECURITY: the `feature` string is LLM-supplied free text. Strip shell
+// metacharacters and embed in single quotes (POSIX shell escaping) to
+// prevent injection even though the only caller is an LLM. The branch
+// name is already sanitized to `[a-z0-9-]` via `slug`.
+				const safeFeature = feature
+					.replace(/[\n\r"\\$`!]/g, "")
+					.replace(/'/g, "'\\''"); // close-quote, escaped quote, reopen
+				const safeTitle = `'[aidlc] ${safeFeature}'`;
+				// Backticks in the body string are escaped so the surrounding
+				// template literal parses cleanly.
+				const safeBody = `'Work in progress. This PR is the workspace for the AIDLC workflow.\n\nSee \`.aidlc/state.md\` for current state.'`;
 				const prOut = tryRun(
-					`gh pr create --draft --base main --head ${branchName} --title "[aidlc] ${feature}" --body "Work in progress. This PR is the workspace for the AIDLC workflow.\\n\\nSee \`.aidlc/state.md\` for current state."`,
+					`gh pr create --draft --base ${defaultBranch} --head ${branchName} --title ${safeTitle} --body ${safeBody}`,
 					cwd,
 				);
 				const prNum = openPRForBranch(cwd);
@@ -416,12 +427,14 @@ export default function (pi: ExtensionAPI) {
 					return {
 						content: [{ type: "text", text: "No open PR. Run `/aidlc start` first or set the PR number." }],
 						isError: true,
+						details: {},
 					};
 				}
 				const ctx = getPRContext(cwd, state.pr);
 				if (!ctx || ctx.comments.length === 0) {
 					return {
 						content: [{ type: "text", text: `No comments on PR #${state.pr}.` }],
+						details: {},
 					};
 				}
 
@@ -490,6 +503,7 @@ export default function (pi: ExtensionAPI) {
 									].join("\n"),
 								},
 							],
+							details: {},
 						};
 					}
 				}
@@ -508,6 +522,7 @@ export default function (pi: ExtensionAPI) {
 							].join("\n"),
 						},
 					],
+					details: {},
 				};
 			}
 
@@ -545,6 +560,7 @@ export default function (pi: ExtensionAPI) {
 					},
 				],
 				isError: true,
+				details: {},
 			};
 		},
 	});
@@ -569,27 +585,26 @@ export default function (pi: ExtensionAPI) {
 		pi.registerCommand(cmd.name, {
 			description: cmd.description,
 			handler: async (args, ctx) => {
-				// The handler emits a directive message; pi will then load the
-				// corresponding skill (registered separately) for the heavy lifting.
-				const skillName =
-					cmd.name === "aidlc-status" ? "aidlc-workflow" : cmd.name;
-				return [
-					{
-						type: "text",
-						text: [
-							`/aidlc ${cmd.phase} → load \`${skillName}\` skill`,
-							``,
-							cmd.help,
-							args ? `\nArguments: ${args}` : "",
-						]
-							.filter(Boolean)
-							.join("\n"),
-						// Hint to load the skill by emitting a `skill:load`-shaped
-						// hint. The actual skill loading is handled by pi when the
-						// user invokes the slash command — the skill auto-loads
-						// based on its description.
-					},
-				];
+				// The handler returns Promise<void> — pi discards the return
+				// value. To actually trigger the skill we must inject a user
+				// message via `pi.sendUserMessage`. The skill name maps to the
+				// matching `skills/<name>/SKILL.md` registered separately.
+				const skillName = cmd.name === "aidlc-status" ? "aidlc-workflow" : cmd.name;
+				const directive = args ? `/${cmd.name} ${args}` : `/${cmd.name}`;
+
+				if (ctx.isIdle && !ctx.isIdle()) {
+					ctx.ui.notify(`Agent is busy — try ${directive} once the current turn finishes`, "warning");
+					return;
+				}
+
+				try {
+					pi.sendUserMessage(directive);
+				} catch (err) {
+					ctx.ui.notify(
+						`Failed to invoke ${skillName}`,
+						"warning",
+					);
+				}
 			},
 		});
 	}
