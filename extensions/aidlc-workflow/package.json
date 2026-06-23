@@ -1,0 +1,24 @@
+{
+  "name": "aidlc-workflow",
+  "version": "0.1.0",
+  "description": "AI-Driven Development Life Cycle (AIDLC) — spec → plan → implement → test → review → ship with state in `.aidlc/state.md` and feedback loop via PR review comments.",
+  "type": "module",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/smoke.test.ts",
+    "test:smoke": "node --test test/smoke.test.ts"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@types/node": "^22.0.0",
+    "typebox": "^1.0.0",
+    "typescript": "^5.5.0"
+  },
+  "dependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "comments": "Resolved from the user's globally-installed pi package. Set a concrete version range before publishing."
+    }
+  }
+}
