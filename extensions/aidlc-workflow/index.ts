@@ -136,11 +136,35 @@ function parseState(md: string): AidlcState {
 	return result;
 }
 
+/**
+ * Map camelCase/snake_case field names to the sentence-case display
+ * label used in state.md. Centralized so writer and reader agree on
+ * the canonical format. (`parseState` is case-insensitive, so any
+ * casing works for READING, but writing is a one-way contract — if
+ * the writer emits a form the reader doesn't know about, the value
+ * is silently dropped on the next parse.)
+ */
+const DISPLAY_KEY: Record<string, string> = {
+	phase: "Phase",
+	branch: "Branch",
+	pr: "PR",
+	lastAction: "Last action",
+	nextAction: "Next action",
+	notes: "Notes",
+};
+
 function renderState(state: AidlcState): string {
 	const lines: string[] = ["# AIDLC State", ""];
 	for (const [key, value] of Object.entries(state)) {
 		if (value === null || value === undefined || value === "") continue;
-		const displayKey = key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+		// Look up the canonical display label; fall back to a generic
+		// title-case conversion for unknown keys (forward-compat).
+		const displayKey =
+			DISPLAY_KEY[key] ??
+			key
+				.replace(/_/g, " ")
+				.replace(/([a-z])([A-Z])/g, "$1 $2")
+				.replace(/^./, (c) => c.toUpperCase());
 		lines.push(`- **${displayKey}**: ${value}`);
 	}
 	lines.push("", `_Updated: ${new Date().toISOString()}_`);

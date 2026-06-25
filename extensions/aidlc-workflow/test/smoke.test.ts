@@ -300,6 +300,55 @@ test("/aidlc start creates a branch and draft PR state", async () => {
 	}
 });
 
+// Regression: renderState used to emit `LastAction` (no space) for the
+// `lastAction` key, but parseState normalizes keys with whitespace to
+// underscores and only knows about `last_action` / `next_action`. The
+// mismatch silently dropped `lastAction` and `nextAction` on the next
+// read — `/aidlc status` would show "Last action: —" immediately after
+// `/aidlc start`. This test pins the round-trip.
+test("/aidlc start → /aidlc status round-trip preserves lastAction/nextAction", async () => {
+	const pi = new MockExtensionAPI();
+	const activate = await loadExtension();
+	activate(pi);
+
+	const repo = makeRepo({ branch: "main" });
+	fs.rmSync(path.join(repo, ".aidlc", "state.md"), { force: true });
+	execSync("git add -A && git commit -q -m 'clean state'", { cwd: repo });
+
+	try {
+		const aidlc = pi.tools.get("aidlc")!;
+		const ctx = { cwd: repo, hasUI: false, ui: undefined as never };
+
+		await aidlc.execute("call-1", { action: "start", feature: "Round Trip" }, undefined, undefined, ctx);
+
+		// Verify the on-disk format uses "Last action" / "Next action"
+		// (with space) — not the broken "LastAction" / "NextAction".
+		const stateContent = fs.readFileSync(path.join(repo, ".aidlc", "state.md"), "utf-8");
+		assert.match(stateContent, /- \*\*Last action\*\*:/, "state.md should use 'Last action' (with space), not 'LastAction'");
+		assert.match(stateContent, /- \*\*Next action\*\*:/, "state.md should use 'Next action' (with space), not 'NextAction'");
+		assert.doesNotMatch(stateContent, /LastAction/, "state.md must not contain the broken 'LastAction' key");
+		assert.doesNotMatch(stateContent, /NextAction/, "state.md must not contain the broken 'NextAction' key");
+
+		// Verify the parser actually picks up the values — a fresh
+		// /aidlc status should show a real timestamp, not the default
+		// em-dash.
+		const statusResult = (await aidlc.execute("call-2", { action: "status" }, undefined, undefined, ctx)) as {
+			content: Array<{ type: string; text: string }>;
+		};
+		const text = statusResult.content[0].text;
+		// lastAction should be an ISO timestamp (YYYY-MM-DDTHH:MM:SS), not "—"
+		assert.match(
+			text,
+			/Last action: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+			`/aidlc status should show a real lastAction timestamp after /aidlc start. Got: ${text}`,
+		);
+		// nextAction should be the "Run /specify" directive, not "—"
+		assert.match(text, /Next action: Run \/specify/);
+	} finally {
+		rmRepo(repo);
+	}
+});
+
 test("slash command handlers invoke the matching skill via sendUserMessage", async () => {
 	const pi = new MockExtensionAPI();
 	const activate = await loadExtension();
