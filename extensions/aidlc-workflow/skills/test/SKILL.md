@@ -8,6 +8,16 @@ When tests fail, invoke `systematic-debugging` before proposing fixes.
 Iron law: NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST.
 </HARD-GATE>
 
+<HARD-GATE>
+The `/test` phase MUST validate TDD compliance. For each spec `## Test Plan` scenario (ST-NNN), verify ≥1 test covers it. For each production code commit, verify a test commit preceded it. Report violations explicitly.
+</HARD-GATE>
+
+## TDD Validation Steps
+
+1. **Scenario coverage check:** grep test files for `ST-NNN` IDs from spec.md. Report: "X scenarios covered, Y missing."
+2. **Commit history check:** `git log --oneline | head -20` — verify test files are committed before or with their corresponding production code.
+3. **TDD violation detection:** if production files changed without test files also changed, report as TDD violation.
+
 # Test
 
 Run the test suite, address failures, and verify that all the spec's acceptance criteria are covered. This is the gate before review.
