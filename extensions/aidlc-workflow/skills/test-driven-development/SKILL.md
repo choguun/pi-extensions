@@ -392,7 +392,7 @@ Can't check all boxes? You skipped TDD. Start over.
 
 Bug found? Write failing test reproducing it. Follow TDD cycle. Test proves fix and prevents regression.
 
-Never fix bugs without a test.
+Never fix bugs without a test. For root-cause investigation before the fix, invoke the **`systematic-debugging`** skill — TDD's RED step is wasted if you fix the wrong bug.
 
 ## Testing Anti-Patterns
 
