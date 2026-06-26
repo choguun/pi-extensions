@@ -28,6 +28,12 @@ Write the test first. Watch it fail. Write minimal code to pass.
 
 Thinking "skip TDD just this once"? Stop. That's rationalization.
 
+**AIDLC-specific triggers:**
+- Starting a new T-XXX task from `.aidlc/plan.md`
+- A spec scenario ST-NNN from `.aidlc/spec.md` `## Test Plan` section
+- A bug found during `/test` phase or by reviewer comments
+- Any code change in `extensions/*/src/` or `extensions/*/*.ts`
+
 ## The Iron Law
 
 ```
@@ -109,6 +115,13 @@ Vague name, tests mock not code
 - One behavior
 - Clear name
 - Real code (no mocks unless unavoidable)
+
+**AIDLC test patterns:**
+- Test files live at `extensions/<extension>/test/*.test.ts`
+- Use `node:test` framework (not Jest, not Mocha)
+- Import production code: `import { foo } from "../<module>.ts";`
+- Use shared mock from `../mock-extension-api.ts` for extension API tests
+- Run from worktree: `cd <worktree> && npm test test/<file>.test.ts`
 
 ### Verify RED - Watch It Fail
 
@@ -268,6 +281,9 @@ Tests-first force edge case discovery before implementing. Tests-after verify yo
 | "TDD will slow me down" | TDD faster than debugging. Pragmatic = test-first. |
 | "Manual test faster" | Manual doesn't prove edge cases. You'll re-test every change. |
 | "Existing code has no tests" | You're improving it. Add tests for existing code. |
+| "Spec didn't have Test Plan" | Spec WRITER didn't enforce, but implementer must add test scenarios to spec.md BEFORE writing any code. Update spec, get user approval, then proceed. |
+| "I'll test the next task" | TDD is per-task, not per-feature. Each T-XXX gets its own RED-GREEN-REFACTOR. |
+| "Multi-session subagent will handle it" | Subagents follow TDD too. They must produce the failing test in their worktree before implementation. |
 
 ## Red Flags - STOP and Start Over
 
@@ -324,6 +340,30 @@ PASS
 **REFACTOR**
 Extract validation for multiple fields if needed.
 
+**AIDLC example: Bug in bootstrap.ts**
+
+Bug found: `event.cwd` is always undefined in the bootstrap context handler.
+
+**RED:**
+```typescript
+test("context handler reads cwd from ctx, not event.cwd", async () => {
+  const pi = new MockExtensionAPI();
+  bootstrapExtension(pi);
+  await pi.emit("session_start", {});
+  const result = await pi.emit("context", {
+    messages: [],
+    cwd: "/some/cwd"
+  });
+  // assertion: bootstrap should read from ctx.cwd
+});
+```
+
+**Verify RED:** Run `npm test test/bootstrap.test.ts`. Test fails: "ReferenceError: event.cwd is not defined" or similar.
+
+**GREEN:** Fix in `bootstrap.ts` — read `ctx.cwd` instead of `event.cwd`.
+
+**Verify GREEN:** Test passes.
+
 ## Verification Checklist
 
 Before marking work complete:
@@ -360,6 +400,14 @@ When adding mocks or test utilities, read [testing-anti-patterns.md](testing-ant
 - Testing mock behavior instead of real behavior
 - Adding test-only methods to production classes
 - Mocking without understanding dependencies
+
+## AIDLC-Specific Notes
+
+- Tests live in `extensions/<extension>/test/*.test.ts`
+- Run from worktree: `cd <worktree> && npm test <file>` (not from main checkout)
+- Multi-session subagents follow TDD too — they produce failing tests in their worktrees
+- The `/test` phase validates scenario coverage (ST-NNN grep) + commit history (test-before-impl)
+- Existing `agents/implementer.md` enforces this skill via iron law
 
 ## Final Rule
 
