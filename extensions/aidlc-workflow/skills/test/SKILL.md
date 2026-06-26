@@ -3,6 +3,11 @@ name: test
 description: Runs the test suite and addresses failures. Use when the current AIDLC phase=testing, after implementing, or when CI is red. Verifies that all the acceptance criteria from the spec are covered.
 ---
 
+<HARD-GATE>
+When tests fail, invoke `systematic-debugging` before proposing fixes.
+Iron law: NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST.
+</HARD-GATE>
+
 # Test
 
 Run the test suite, address failures, and verify that all the spec's acceptance criteria are covered. This is the gate before review.
@@ -85,3 +90,28 @@ For each acceptance criterion in `.aidlc/spec.md`, verify there's a test that co
 - **"Fixing" pre-existing tests**: those are out of scope. Note them and move on.
 - **Lowering coverage**: if you're tempted to delete a test to make the suite pass, that's a red flag. The test is right, the code is wrong.
 - **Not checking the spec**: every AC needs a test. If the suite passes but an AC has no test, you haven't verified the spec — you've verified the test.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "Tests pass, ship it" | Did you run them fresh in this turn? `verification-before-completion` requires fresh evidence. |
+| "This test is flaky" | Investigate with `systematic-debugging` before disabling. Flaky = a bug you haven't found yet. |
+| "I'll add a regression test later" | TDD requires the test first. No "later" in TDD. |
+| "Coverage is fine" | Coverage ≠ correctness. Run the actual verification command. |
+| "The failure is in someone else's code" | Pre-existing failures are still failures. Note them, but don't pretend they're not there. |
+| "I can guess why it failed" | Guess → patch → still broken. Use `systematic-debugging`. Form a hypothesis with evidence. |
+| "Just rerun, it'll pass" | A test that needs a rerun to pass is broken. Find out why. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "Linter passed" | Linter ≠ compiler. Run the build / test command. |
+| "It worked when I tried it" | Manual testing is ad-hoc. Re-run the automated suite. |
+| "Tests are slow" | Profile the slow tests. Don't skip them. |
+| "I deleted the failing test" | That's deleting evidence. Fix the code, not the test. |
+| "Skipping pre-existing failures" | Out-of-scope failures still ship. Note them in state.md so the human sees. |
+| "I'll fix the spec, not the test" | If the AC was wrong, say so in the commit. Don't silently flip the contract. |
