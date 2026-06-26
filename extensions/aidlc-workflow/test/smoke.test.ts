@@ -46,6 +46,7 @@ class MockExtensionAPI {
 	readonly tools = new Map<string, RegisteredTool>();
 	readonly commands = new Map<string, RegisteredCommand>();
 	readonly sentMessages: string[] = [];
+	readonly eventHandlers = new Map<string, Array<(event: any, ctx: any) => Promise<void> | void>>();
 
 	sendUserMessage(message: string): void {
 		this.sentMessages.push(message);
@@ -61,6 +62,16 @@ class MockExtensionAPI {
 			description: command.description,
 			handler: command.handler,
 		});
+	}
+
+	// Stub for bootstrap.ts (Task F1.5+F1.6). The bootstrap extension registers
+	// `session_start`, `session_compact`, `agent_end`, `context` handlers via
+	// `pi.on(...)`. Real handlers are tested in F1.7 — here we just capture
+	// registrations so the extension doesn't throw on load.
+	on(event: string, handler: (event: any, ctx: any) => Promise<void> | void): void {
+		const list = this.eventHandlers.get(event) ?? [];
+		list.push(handler);
+		this.eventHandlers.set(event, list);
 	}
 }
 

@@ -21,6 +21,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { classifyComment } from "./classifier.ts";
 import { upsertSignal, listSignals, slugify, classifyCategory, appendLogEntry, formatLogEntry } from "./substrate.ts";
 import { setupWorktree, listWorktrees } from "./worktree.ts";
+import bootstrapExtension from "./bootstrap.ts";
 
 const AIDLC_DIR = ".aidlc";
 const STATE_FILE = ".aidlc/state.md";
@@ -846,4 +847,6 @@ export default function (pi: ExtensionAPI) {
 			},
 		});
 	}
+
+	bootstrapExtension(pi);
 }
