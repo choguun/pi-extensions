@@ -135,6 +135,7 @@ The loop continues until `/ship` is reached and the PR is merged. If new comment
 - `review` — the review phase skill
 - `ship` — the ship phase skill
 - `state-management` — how state is read/written/persisted
+- `test-driven-development` — TDD as iron law; loaded automatically during `/implement`
 
 ## Red Flags
 
