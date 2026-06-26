@@ -41,4 +41,5 @@ The tester validates that TDD was followed. Refuses to approve if TDD violations
 
 ## Reference
 
-Invoke the **`test-driven-development`** skill for TDD discipline. The tester enforces it.
+- **`test-driven-development`** — TDD discipline (iron law + RED-GREEN-REFACTOR + anti-rationalization table)
+- **`test`** — the `/test` skill that this agent validates against (TDD validation steps mirror `skills/test/SKILL.md` lines 12-24)
