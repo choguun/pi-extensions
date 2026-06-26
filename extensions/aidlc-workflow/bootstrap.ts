@@ -56,3 +56,45 @@ function parseStateContent(content: string): AIDLCState | null {
 
   return parsed > 0 ? result : null;
 }
+
+const ACTIVE_LOOP_TEMPLATE = `${SUBAGENT_STOP_TAG}
+If you were dispatched as a subagent to execute a specific task, skip this reminder.
+</SUBAGENT-STOP>
+
+${EXTREMELY_IMPORTANT_MARKER}
+You are working in AIDLC mode (the AI-Driven Development Life Cycle).
+
+Current state:
+- Phase: {{phase}}
+- Branch: {{branch}}
+- PR: {{pr}}
+
+Next action: run \`/aidlc next\`. Or read \`.aidlc/state.md\` directly.
+
+HARD-GATEs (do not skip):
+- Before any creative work (new feature, refactor, behavior change): invoke \`/specify\` first. Do NOT write code without an approved design.
+- Before any completion claim: invoke \`verification-before-completion\` and run the verification command.
+- Before patching a test failure or bug: invoke \`systematic-debugging\` and find the root cause first.
+
+Each AIDLC skill carries its own HARD-GATE at the top of its SKILL.md. Read it before invoking.
+</${EXTREMELY_IMPORTANT_MARKER}>`;
+
+const NO_LOOP_TEMPLATE = `${SUBAGENT_STOP_TAG}
+If you were dispatched as a subagent to execute a specific task, skip this reminder.
+</SUBAGENT-STOP>
+
+${EXTREMELY_IMPORTANT_MARKER}
+You are working in AIDLC mode (the AI-Driven Development Life Cycle).
+
+No active loop in this directory. To start a feature, run \`/aidlc start "<feature-name>"\`.
+
+If you are about to do creative work, run \`/aidlc start "<feature>"\` first to spawn the AIDLC pipeline. Do NOT skip the brainstorming/spec phase.
+</${EXTREMELY_IMPORTANT_MARKER}>`;
+
+export function buildBootstrapContent(state: AIDLCState | null): string {
+  if (state === null) return NO_LOOP_TEMPLATE;
+  return ACTIVE_LOOP_TEMPLATE
+    .replace("{{phase}}", state.phase)
+    .replace("{{branch}}", state.branch)
+    .replace("{{pr}}", state.pr);
+}
