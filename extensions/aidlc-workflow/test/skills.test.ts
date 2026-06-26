@@ -18,6 +18,7 @@ import { test } from "node:test";
 
 const ROOT = join(import.meta.dirname, "..");
 const VERIFICATION_SKILL = join(ROOT, "skills/verification-before-completion/SKILL.md");
+const DEBUGGING_SKILL = join(ROOT, "skills/systematic-debugging/SKILL.md");
 
 function readSkill(path: string): string {
   if (!existsSync(path)) return "";
@@ -99,4 +100,55 @@ test("install.sh symlink points to verification-before-completion", (t) => {
     expected.replace(/\/+/g, "/"),
     `symlink should point to ${expected}, got ${target}`,
   );
+});
+
+// ---- F4: systematic-debugging ----
+
+test("systematic-debugging SKILL.md exists", () => {
+  assert.ok(existsSync(DEBUGGING_SKILL));
+});
+
+test("systematic-debugging has valid frontmatter", () => {
+  const content = readSkill(DEBUGGING_SKILL);
+  assert.match(content, /^---\nname: systematic-debugging\n/);
+  assert.match(content, /^description: Use when/m);
+});
+
+test("systematic-debugging description ≤ 1024 chars", () => {
+  const content = readSkill(DEBUGGING_SKILL);
+  const match = content.match(/^description: (.+)$/m);
+  assert.ok(match);
+  assert.ok(match[1].length <= 1024, `description is ${match[1].length} chars`);
+});
+
+test("systematic-debugging contains iron law", () => {
+  const content = readSkill(DEBUGGING_SKILL);
+  assert.match(content, /NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST/);
+});
+
+test("systematic-debugging contains all 4 phase headers", () => {
+  const content = readSkill(DEBUGGING_SKILL);
+  for (const phase of [
+    "Root Cause Investigation",
+    "Pattern Analysis",
+    "Hypothesis and Testing",
+    "Implementation",
+  ]) {
+    assert.match(content, new RegExp(phase));
+  }
+});
+
+test("systematic-debugging contains the '3+ Fixes Failed' rule", () => {
+  const content = readSkill(DEBUGGING_SKILL);
+  assert.match(content, /3\+ Fixes Failed/);
+});
+
+test("test/SKILL.md references systematic-debugging", () => {
+  const content = readSkill(join(ROOT, "skills/test/SKILL.md"));
+  assert.match(content, /systematic-debugging/);
+});
+
+test("implement/SKILL.md references systematic-debugging", () => {
+  const content = readSkill(join(ROOT, "skills/implement/SKILL.md"));
+  assert.match(content, /systematic-debugging/);
 });
