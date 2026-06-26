@@ -3,6 +3,12 @@ name: ship
 description: Marks the AIDLC PR ready for review and triggers the merge. Use when the current AIDLC phase=shipping and all reviews are addressed.
 ---
 
+<HARD-GATE>
+Before shipping, invoke `verification-before-completion`. Run the
+test suite + typecheck + lint in this turn. Read the output. THEN
+declare ready to ship.
+</HARD-GATE>
+
 # Ship
 
 Make sure the AIDLC PR is actually merged to main. Don't ship a half-merged branch.
