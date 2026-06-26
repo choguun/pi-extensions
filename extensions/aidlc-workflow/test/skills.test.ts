@@ -12,7 +12,7 @@
 //   - install.sh creates the symlink under ~/.pi/agent/skills/
 
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 
@@ -72,7 +72,7 @@ test("reviewer.md references verification-before-completion", () => {
   assert.match(content, /verification-before-completion/);
 });
 
-test("install.sh symlink points to verification-before-completion", () => {
+test("install.sh symlink points to verification-before-completion", (t) => {
   // install.sh creates ~/.pi/agent/skills/<name>/ as a real directory and
   // symlinks the SKILL.md inside it — check the file, not the directory.
   const linkPath = join(
@@ -80,9 +80,23 @@ test("install.sh symlink points to verification-before-completion", () => {
     ".pi/agent/skills/verification-before-completion/SKILL.md",
   );
   if (!existsSync(linkPath)) {
-    // install.sh hasn't run; this is acceptable in CI
+    // Skip — not silently pass. A silent `return` would report the test as
+    // passing without any assertion, which is exactly the false-positive
+    // failure mode the verification-before-completion skill warns about.
+    t.skip("install.sh symlink not present (run bash install.sh)");
     return;
   }
   const stat = lstatSync(linkPath);
-  assert.ok(stat.isSymbolicLink(), "should be a symlink");
+  assert.ok(stat.isSymbolicLink(), `expected symlink at ${linkPath}`);
+  // Verify WHERE the symlink points, not just THAT it's a symlink. A stale
+  // link to a deleted file would otherwise pass. install.sh builds the
+  // target as "$skill/SKILL.md" where $skill is a directory path with a
+  // trailing slash, producing a "//" artifact — normalize both sides.
+  const target = readlinkSync(linkPath);
+  const expected = join(ROOT, "skills/verification-before-completion/SKILL.md");
+  assert.equal(
+    target.replace(/\/+/g, "/"),
+    expected.replace(/\/+/g, "/"),
+    `symlink should point to ${expected}, got ${target}`,
+  );
 });
