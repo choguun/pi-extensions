@@ -165,3 +165,4 @@ These thoughts mean STOP — you're rationalizing:
 | "The task is just one line" | One line still has a test. The commit doesn't get to skip RED. |
 | "I'll fix the bug, then add the test" | Reverse order. Test reproduces the bug first. |
 | "I'll skip the failing pre-existing test" | Note it. Don't silently bypass. The next phase needs to know. |
+| "I'll write the test after" | Invoke `test-driven-development` skill. Iron law: NO PRODUCTION CODE WITHOUT FAILING TEST FIRST. Tests-after prove nothing. |
