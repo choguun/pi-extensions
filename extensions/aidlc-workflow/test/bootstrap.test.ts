@@ -11,11 +11,21 @@ import { join } from "node:path";
 
 import {
 	readAIDLCState,
+	buildBootstrapContent,
 	messageContainsBootstrap,
 	firstNonCompactionSummaryIndex,
 	type AIDLCState,
 } from "../bootstrap.ts";
 import bootstrapExtension from "../bootstrap.ts";
+// Aliased import — the existing wiring tests (F1.5) define their own local
+// `MockExtensionAPI` class with a different shape (a `handlers` Map populated
+// via `pi.on(...)` returning the handler directly, plus a `call()` helper).
+// The shared mock from `./mock-extension-api.ts` is the canonical version
+// (has `emit()`, `ctx`, etc.) — we use it for the new F1.7 handler
+// integration tests below so they exercise the actual pi event-dispatch
+// path. Don't unify them in this PR — F1.5's tests deliberately use the
+// local shape so the regression tests for `ctx.cwd` stay readable.
+import SharedMockExtensionAPI from "./mock-extension-api.ts";
 
 function tmpDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -153,6 +163,47 @@ test("readAIDLCState: typed return matches AIDLCState interface", () => {
 	} finally {
 		cleanup(dir);
 	}
+});
+
+// ---------------------------------------------------------------------------
+// buildBootstrapContent
+// ---------------------------------------------------------------------------
+
+test("buildBootstrapContent: with state renders the active-loop template", () => {
+	const state: AIDLCState = {
+		phase: "implementing",
+		branch: "feat/superpowers-fusion-tier-1",
+		pr: "42",
+		notes: "F1.7 in progress",
+	};
+	const out = buildBootstrapContent(state);
+
+	assert.equal(typeof out, "string");
+	assert.ok(out.length > 0, "active-loop template should be non-empty");
+	// The active template embeds the EXTREMELY_IMPORTANT marker.
+	assert.match(out, /<EXTREMELY_IMPORTANT>/);
+	// State fields are interpolated.
+	assert.match(out, /Phase: implementing/);
+	assert.match(out, /Branch: feat\/superpowers-fusion-tier-1/);
+	assert.match(out, /PR: 42/);
+	// The active template invokes /aidlc next.
+	assert.match(out, /aidlc next/);
+	// It also references the HARD-GATEs — those are how superpowers forces
+	// brainstorming/spec/verification before code is written.
+	assert.match(out, /HARD-GATEs/);
+});
+
+test("buildBootstrapContent: with null renders the no-loop template", () => {
+	const out = buildBootstrapContent(null);
+
+	assert.equal(typeof out, "string");
+	assert.ok(out.length > 0, "no-loop template should be non-empty");
+	assert.match(out, /<EXTREMELY_IMPORTANT>/);
+	assert.match(out, /No active loop in this directory/);
+	assert.match(out, /aidlc start/);
+	// The no-loop template explicitly tells the agent NOT to skip
+	// brainstorming/spec — this is the gate that prevents code-without-spec.
+	assert.match(out, /Do NOT skip/);
 });
 
 // ---------------------------------------------------------------------------
@@ -510,5 +561,266 @@ test("bootstrapExtension: context handler reads cwd from ctx, not event.cwd or p
 		process.chdir(originalCwd);
 		cleanup(dirWithState);
 		cleanup(dirNoState);
+	}
+});
+
+// ---------------------------------------------------------------------------
+// Handler integration tests using the shared MockExtensionAPI's emit().
+//
+// These tests exercise the bootstrap extension through the SAME dispatch
+// path pi uses (`emit(event, payload)` calls `handler(payload, this.ctx)`),
+// rather than the F1.5 wiring tests' `call(pi, event, payload, ctx)`
+// helper that calls handlers directly. The shared mock's `ctx.cwd` is
+// what bootstrap.ts:147 reads — this is the path that would fail if the
+// shared mock didn't expose `ctx.cwd` correctly.
+// ---------------------------------------------------------------------------
+
+/** Build a minimal user-role message with string content. */
+function userMsg(text: string): { role: string; content: string } {
+	return { role: "user", content: text };
+}
+
+/** Build a minimal user-role message with array content (the form bootstrap injects). */
+function userMsgArray(text: string): { role: string; content: Array<{ type: string; text: string }> } {
+	return { role: "user", content: [{ type: "text", text }] };
+}
+
+/** Write a `.aidlc/state.md` into the temp dir with sensible defaults. */
+function writeState(dir: string, phase: string, branch = "feat/test", pr = "42"): void {
+	mkdirSync(join(dir, ".aidlc"));
+	writeFileSync(
+		join(dir, ".aidlc", "state.md"),
+		`- **Phase**: ${phase}
+- **Branch**: ${branch}
+- **PR**: ${pr}
+- **Notes**: integration-fixture
+`,
+	);
+}
+
+test("emit-integration: context handler injects bootstrap message and returns { messages }", async () => {
+	// This test captures the actual injected message via a `spy` set up
+	// by wrapping pi.on() before bootstrapExtension registers handlers.
+	const dir = tmpDir("aidlc-emit-spy-");
+	writeState(dir, "implementing", "feat/from-emit", "7");
+	try {
+		const pi = new SharedMockExtensionAPI();
+		pi.ctx.cwd = dir;
+
+		// Spy on context handler invocations: capture the return value of
+		// each call so we can assert what bootstrap returned.
+		const capturedReturns: unknown[] = [];
+		const realOn = pi.on.bind(pi);
+		pi.on = (event: string, handler: Parameters<typeof pi.on>[1]): void => {
+			if (event === "context") {
+				realOn(event, async (payload, ctx) => {
+					capturedReturns.push(await handler(payload, ctx));
+				});
+			} else {
+				realOn(event, handler);
+			}
+		};
+
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+		await pi.emit("session_start", {});
+		await pi.emit("context", { messages: [userMsg("hi")] });
+
+		assert.equal(capturedReturns.length, 1, "context handler should have fired exactly once");
+		const result = capturedReturns[0] as { messages: Array<{ role: string; content: unknown }> } | undefined;
+		assert.ok(result, "context handler should return an object");
+		assert.ok(Array.isArray(result.messages));
+		assert.equal(result.messages.length, 2, "should have injected one message + original");
+		// Inserted message comes first; it's a user role with array content
+		// that contains the active-loop template.
+		const inserted = result.messages[0];
+		assert.equal(inserted.role, "user");
+		assert.ok(Array.isArray(inserted.content));
+		const text = (inserted.content as Array<{ type: string; text: string }>)[0].text;
+		assert.match(text, /Phase: implementing/);
+		assert.match(text, /Branch: feat\/from-emit/);
+		assert.match(text, /PR: 7/);
+		// Original message preserved at the tail.
+		assert.equal(result.messages[1].role, "user");
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("emit-integration: agent_end disarms flag — subsequent context events skip injection", async () => {
+	const dir = tmpDir("aidlc-emit-disarm-");
+	writeState(dir, "implementing");
+	try {
+		const pi = new SharedMockExtensionAPI();
+		pi.ctx.cwd = dir;
+
+		// Same spy pattern.
+		const capturedReturns: unknown[] = [];
+		const realOn = pi.on.bind(pi);
+		pi.on = (event: string, handler: Parameters<typeof pi.on>[1]): void => {
+			if (event === "context") {
+				realOn(event, async (payload, ctx) => {
+					capturedReturns.push(await handler(payload, ctx));
+				});
+			} else {
+				realOn(event, handler);
+			}
+		};
+
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+		await pi.emit("session_start", {});
+		await pi.emit("agent_end", {});
+		await pi.emit("context", { messages: [userMsg("hi")] });
+
+		// The context handler should return undefined (no injection).
+		assert.equal(capturedReturns.length, 1);
+		assert.equal(capturedReturns[0], undefined);
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("emit-integration: session_compact re-arms the flag after agent_end", async () => {
+	const dir = tmpDir("aidlc-emit-rearm-");
+	writeState(dir, "implementing");
+	try {
+		const pi = new SharedMockExtensionAPI();
+		pi.ctx.cwd = dir;
+
+		const capturedReturns: unknown[] = [];
+		const realOn = pi.on.bind(pi);
+		pi.on = (event: string, handler: Parameters<typeof pi.on>[1]): void => {
+			if (event === "context") {
+				realOn(event, async (payload, ctx) => {
+					capturedReturns.push(await handler(payload, ctx));
+				});
+			} else {
+				realOn(event, handler);
+			}
+		};
+
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+		// Reset flag, then re-arm via session_compact.
+		await pi.emit("agent_end", {});
+		await pi.emit("session_compact", {});
+
+		// First context after compaction — should inject (because session_compact re-armed).
+		capturedReturns.length = 0;
+		await pi.emit("context", { messages: [] });
+
+		assert.equal(capturedReturns.length, 1);
+		const result = capturedReturns[0] as { messages: Array<unknown> } | undefined;
+		assert.ok(result, "session_compact should re-arm; context handler should inject");
+		assert.equal(result.messages.length, 1, "should have injected one message");
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("emit-integration: context handler skips injection when a bootstrap is already in messages", async () => {
+	const dir = tmpDir("aidlc-emit-dedupe-");
+	writeState(dir, "implementing");
+	try {
+		const pi = new SharedMockExtensionAPI();
+		pi.ctx.cwd = dir;
+
+		const capturedReturns: unknown[] = [];
+		const realOn = pi.on.bind(pi);
+		pi.on = (event: string, handler: Parameters<typeof pi.on>[1]): void => {
+			if (event === "context") {
+				realOn(event, async (payload, ctx) => {
+					capturedReturns.push(await handler(payload, ctx));
+				});
+			} else {
+				realOn(event, handler);
+			}
+		};
+
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+		await pi.emit("session_start", {});
+
+		// Pre-existing message already contains the bootstrap marker.
+		await pi.emit("context", {
+			messages: [
+				userMsgArray("previous turn already has AIDLC mode bootstrap in history"),
+			],
+		});
+
+		// Should NOT inject (dedupe).
+		assert.equal(capturedReturns.length, 1);
+		assert.equal(capturedReturns[0], undefined);
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("emit-integration: context handler returns undefined when .aidlc/ is missing from cwd", async () => {
+	const dir = tmpDir("aidlc-emit-noaidlc-");
+	// Deliberately do NOT writeState() — there's no .aidlc/ in this dir.
+	try {
+		const pi = new SharedMockExtensionAPI();
+		pi.ctx.cwd = dir;
+
+		const capturedReturns: unknown[] = [];
+		const realOn = pi.on.bind(pi);
+		pi.on = (event: string, handler: Parameters<typeof pi.on>[1]): void => {
+			if (event === "context") {
+				realOn(event, async (payload, ctx) => {
+					capturedReturns.push(await handler(payload, ctx));
+				});
+			} else {
+				realOn(event, handler);
+			}
+		};
+
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+		await pi.emit("session_start", {});
+		await pi.emit("context", { messages: [userMsg("hi")] });
+
+		assert.equal(capturedReturns.length, 1);
+		assert.equal(capturedReturns[0], undefined, "no .aidlc/ → no injection");
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("emit-integration: context handler survives malformed state.md without throwing", async () => {
+	// If state.md exists but is unparseable (no Phase/Branch/PR fields),
+	// readAIDLCState returns null and bootstrap falls back to the no-loop
+	// template. The handler must not throw.
+	const dir = tmpDir("aidlc-emit-malformed-");
+	mkdirSync(join(dir, ".aidlc"));
+	writeFileSync(join(dir, ".aidlc", "state.md"), "this is not a valid state.md\nno fields here\n");
+	try {
+		const pi = new SharedMockExtensionAPI();
+		pi.ctx.cwd = dir;
+
+		const capturedReturns: unknown[] = [];
+		const realOn = pi.on.bind(pi);
+		pi.on = (event: string, handler: Parameters<typeof pi.on>[1]): void => {
+			if (event === "context") {
+				realOn(event, async (payload, ctx) => {
+					capturedReturns.push(await handler(payload, ctx));
+				});
+			} else {
+				realOn(event, handler);
+			}
+		};
+
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+		await pi.emit("session_start", {});
+		// Should NOT throw. With null state, bootstrap injects the no-loop template.
+		await pi.emit("context", { messages: [userMsg("hi")] });
+
+		assert.equal(capturedReturns.length, 1);
+		const result = capturedReturns[0] as { messages: Array<{ role: string; content: unknown }> } | undefined;
+		assert.ok(result, "malformed state.md should still produce a result (no-loop template)");
+		assert.equal(result.messages.length, 2);
+		const inserted = result.messages[0];
+		assert.equal(inserted.role, "user");
+		const text = (inserted.content as Array<{ type: string; text: string }>)[0].text;
+		// No-loop template signature.
+		assert.match(text, /No active loop/);
+	} finally {
+		cleanup(dir);
 	}
 });
