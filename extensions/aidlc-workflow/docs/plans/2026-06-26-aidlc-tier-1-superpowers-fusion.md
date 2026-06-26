@@ -371,7 +371,26 @@ Expected: extension loads without error.
 ## Task F1.7: Write bootstrap.test.ts (15 tests)
 
 **Files:**
+- Modify: `extensions/aidlc-workflow/test/smoke.test.ts` (extract MockExtensionAPI)
+- Create: `extensions/aidlc-workflow/test/mock-extension-api.ts`
+- Modify: `extensions/aidlc-workflow/package.json` (glob the test script)
 - Create: `extensions/aidlc-workflow/test/bootstrap.test.ts`
+
+**Pre-step A: Extract MockExtensionAPI to a shared module**
+
+Per pre-flight Finding 2 (user chose A — reuse the existing mock):
+1. Read `extensions/aidlc-workflow/test/smoke.test.ts` lines 1-130 to identify the MockExtensionAPI class definition.
+2. Create `extensions/aidlc-workflow/test/mock-extension-api.ts` containing the `MockExtensionAPI` class exported as default. Move it verbatim.
+3. Update `extensions/aidlc-workflow/test/smoke.test.ts` to import from `./mock-extension-api.ts` and remove the local class definition.
+4. Run: `cd extensions/aidlc-workflow && npm run test:smoke`
+5. Expected: smoke tests still pass.
+
+**Pre-step B: Glob the test script in package.json**
+
+Per pre-flight Finding 1 (user chose B — glob):
+1. Edit `extensions/aidlc-workflow/package.json`: change `"test": "npm run typecheck && node --test test/smoke.test.ts test/parser.test.ts test/classifier.test.ts test/branch.test.ts test/substrate.test.ts test/worktree.test.ts"` to `"test": "npm run typecheck && node --test test/*.test.ts"`.
+2. Run: `cd extensions/aidlc-workflow && npm test`
+3. Expected: all 6 existing test files run and pass.
 
 **Step 1: Write the test file**
 
