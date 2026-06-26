@@ -1,7 +1,7 @@
 ---
 title: Tier 2 superpowers fusion: TDD-as-iron-law (F5)
 type: spec
-status: draft
+status: approved
 domain: [aidlc-workflow]
 ---
 
@@ -380,3 +380,4 @@ test/scenario-coverage.test.ts (if validation added)
 ## Timeline
 
 2026-06-26 | spec drafted — 7-question brainstorming session resolved all major design decisions (scope=C Full TDD, implementer=A surgical, skill=C adapt, spec=A mandatory Test Plan, plan=D both, integration=C all 4 phases, merging=D replace existing). Five design sections approved (architecture, components, data flow, error handling, testing). Spec written and awaiting user review.
+2026-06-26 | spec approved — user approved all 7 brainstorming decisions + 5 design sections. Status updated from draft to approved. Spec is ready for writing-plans.
