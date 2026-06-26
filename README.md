@@ -24,7 +24,21 @@ pi-extensions/
 │   ├── signals/, docs/, domains/                    #   knowledge-base folders
 │   ├── commands.md                                  #   standalone skill (works without TS extension)
 │   ├── package.json                                 #   deps + npm test scripts
-│   └── test/                                        #  66 tests, all passing
+│   └── test/                                        #  67 tests, all passing
+├── extensions/multi-session/                       # cross-session IPC
+│   ├── index.ts                                     #   entry point (registers 3 tools + 3 commands)
+│   ├── protocol.ts                                  #   message types, identity, addressing helpers
+│   ├── registry.ts                                  #   process registry (heartbeat + stale prune)
+│   ├── mailbox.ts                                   #   per-session JSONL message log (append + poll)
+│   ├── package.json                                 #   deps + npm test scripts
+│   └── test/                                        #  62 tests, all passing
+├── extensions/plan-mode/                           # Claude Code-style plan mode
+│   ├── index.ts                                     #   entry point (registers plan_enter/plan_exit + 3 commands)
+│   ├── permissions.ts                               #   pattern-based ruleset engine (mirrors OpenCode)
+│   ├── utils.ts                                     #   plan-path resolution + slug helpers
+│   ├── agents/explore.md                            #   read-only recon subagent
+│   ├── package.json                                 #   deps + npm test scripts
+│   └── test/                                        #  65 tests, all passing
 └── README.md                                        # this file
 ```
 
@@ -36,6 +50,9 @@ pi-extensions/
 | `extensions/aidlc-workflow/agents/*.md` | `~/.pi/agent/agents/` | 6 specialized agents |
 | `extensions/aidlc-workflow/skills/*/SKILL.md` | `~/.pi/agent/skills/` | 12 phase + meta skills |
 | `extensions/aidlc-workflow/commands.md` | `~/.pi/agent/skills/aidlc-commands/SKILL.md` | Standalone skill (TS-free) |
+| `extensions/multi-session/` | `~/.pi/agent/extensions/multi-session/` | Cross-session IPC extension |
+| `extensions/plan-mode/` | `~/.pi/agent/extensions/plan-mode/` | Claude Code-style plan mode |
+| `extensions/plan-mode/agents/explore.md` | `~/.pi/agent/agents/explore.md` | Read-only recon subagent |
 
 ## The 6-phase pipeline
 
@@ -82,6 +99,45 @@ Each phase:
 The slash commands invoke the matching skill via `pi.sendUserMessage(directive)`
 — the handler return value is discarded by pi's extension runtime, so the
 directive must be sent explicitly.
+
+## Other extensions
+
+Two more extensions ship in this repo and install via the same `install.sh`.
+They're independent of the AIDLC workflow and work in any pi project.
+
+### Multi-session (`extensions/multi-session/`)
+
+Lets multiple pi processes on the same machine discover each other and
+exchange messages. Process registry (heartbeat + stale prune) and per-session
+JSONL mailboxes live under `${agentDir}/runtime/`.
+
+| Tool | What it does |
+|---|---|
+| `pi_sessions` | List other live pi sessions on this machine (id, name, cwd, model, status) |
+| `pi_send` | Send a message to another session — `task` (inject as user prompt), `request` (expect reply), `notify` (just show), `steer` (interrupt mid-stream) |
+| `pi_who` | Show this session's identity (id, name, cwd, model) |
+
+Plus three slash commands: `/who`, `/sessions`, `/send`. See
+`extensions/multi-session/commands.md` (auto-installed as a fallback skill).
+
+### Plan mode (`extensions/plan-mode/`)
+
+Claude Code / OpenCode-style plan mode: read-only exploration + a 5-phase
+system prompt + a single plan file + explicit `plan_enter` / `plan_exit`
+tools. Activated three ways:
+
+- `--plan-mode` CLI flag (start in plan mode)
+- `/plan-mode` slash command (toggle)
+- `plan_enter` tool call (agent-initiated)
+
+In plan mode, bash is restricted to safe read-only commands; `edit`/`write`
+are only allowed on the resolved plan file. The plan file path is
+`<cwd>/.opencode/plans/<timestamp>-<slug>.md` by default, overridable via
+`--plan-file`, or auto-detected as `.aidlc/plan.md` when an AIDLC loop is
+in the spec/planning phase.
+
+The plan agent gets an `explore` subagent (`agents/explore.md`, read-only
+recon) for parallel scouting before designing.
 
 ## The knowledge-base substrate (loop-engineer fusion)
 
