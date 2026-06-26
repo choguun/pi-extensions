@@ -87,3 +87,27 @@ If unsure, look at `git log main --oneline -20` to see the recent merge commit s
 - **Squashing when the project uses rebase**: respect the project's convention.
 - **Forgetting to delete the branch**: stale branches are technical debt.
 - **Not updating state.md**: the next AIDLC cycle needs to know this one shipped.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "Tests pass locally, good enough" | CI is the gate, not your terminal. Run `gh pr checks`. |
+| "It's a small fix, skip the checklist" | The checklist exists because small fixes get merged broken. Run it. |
+| "Reviewer hasn't approved but it's been a week" | Wait. Ask them. Don't merge over their head. |
+| "CI is flaky, this is fine" | Re-run. If still flaky, don't merge — fix the flake first. |
+| "Working tree dirty but it's just docs" | Commit or stash. The merge will conflict. |
+| "Merge conflicts can't happen on a clean PR" | Branches drift. `gh pr view --json mergeable` is the only source. |
+| "Squash vs rebase, doesn't matter" | The repo has a convention. Match it. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "Squash vs rebase doesn't matter" | The repo has a convention. Match it. |
+| "Branch can stay, it's only 1" | Stale branches are entropy. Delete. |
+| "State.md can wait" | No. State.md is the chain that links sessions. Update before the merge commit lands. |
+| "Reviewer will see it in CI" | CI doesn't read PR bodies. The human needs the link. |
+| "I'll merge and fix the conflict in main" | Merging conflicted branches makes main broken. Resolve first. |

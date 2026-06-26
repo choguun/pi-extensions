@@ -118,3 +118,28 @@ If a task is L, **split it**. L tasks are where TDD breaks down and quality drif
 - **Tasks depend on each other in a chain**: T-002 needs T-001 done, T-003 needs T-002 done. Find the parallelizable work.
 - **No acceptance criteria**: "implement X" is not a task. "Implement X such that A, B, C are testable" is.
 - **No test approach**: every task has a test approach. If you can't write a test, you can't know the task is done.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "I'll figure it out as I go" | As-you-go is no plan. The implementer will guess — and guess wrong. |
+| "This is too simple for a plan" | Simple plans are fast. Write one anyway. |
+| "T-001 isn't user-visible, that's fine" | If a user can't say "yes I see that", it's a horizontal slice. Reslice. |
+| "Tasks depend on each other" | Sequential chains kill parallelism. Find the parallelizable work. |
+| "I'll add ACs as I implement" | ACs are the spec. If you find one mid-implementation, the spec was incomplete. |
+| "The test approach is 'TBD'" | TBD = no plan. Pick unit/integration/e2e now. |
+| "L-sized tasks are fine if I'm fast" | L tasks are where TDD breaks down. Split them. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "I'll add tasks later" | The plan is the contract. Missing task = missing acceptance criterion. |
+| "No test approach is fine for trivial tasks" | No test = no done. Always include. |
+| "10+ tasks is fine" | Hard cap. Split into multiple AIDLC cycles if needed. |
+| "Dependency chains are realistic" | Chains are realistic. They also kill parallelism. Restructure. |
+| "The plan can be one big T-001" | One task = one feature path, not the whole feature. Slice vertically. |
+| "I don't know the file paths yet" | Read the codebase first. Then plan. "I'll find out" = hand-waving. |

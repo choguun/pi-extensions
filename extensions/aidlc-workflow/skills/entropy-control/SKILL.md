@@ -205,3 +205,27 @@ If invoked as a cron (no human in the loop), default behavior:
 
 If invoked manually (human present), run everything and produce the
 full report.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "I'll clean up later" | Entropy control is "later". Pick a date, schedule it, run it. |
+| "git history is enough" | Git history ≠ cleanup. Branches still pin, worktrees still pin, signals still count. |
+| "Drift is minor" | Drift compounds. The first drift is "just a typo"; the third is "AGENTS.md is fiction". |
+| "I'll keep the unmerged branches 'just in case'" | "Just in case" is the graveyard. Archive or delete. |
+| "The TODO is recent" | 6 months is recent. Open it, decide now. |
+| "I won't auto-delete, just report" | Reporting only works if someone reads the report. Auto-fix what's safe. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "It's just a few stale branches" | Today is 3. Next quarter is 30. Stop now. |
+| "Worktrees are cheap" | Worktrees pin branches. You can't delete what you can't see. |
+| "The user will clean up" | The user delegated to the agent. You ARE the cleanup. |
+| "Force-delete is fine, it's a worktree" | Force-delete on dirty worktree loses work. Try without `--force` first. |
+| "Closing a frequency-1 signal is fine" | Frequency 1 with a PR source is a real signal. Read the body before closing. |
+| "AGENTS.md is just docs" | AGENTS.md is the agent's operating manual. Drift = wrong assumptions. |

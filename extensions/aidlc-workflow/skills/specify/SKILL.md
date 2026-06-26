@@ -108,3 +108,29 @@ A spec is "done" when:
 - **Missing acceptance criteria**: every feature needs them. "It should work" is not an acceptance criterion.
 - **Burying open questions**: put them in their own section. Don't pretend to know.
 - **Skipping the boundaries**: this is where real bugs live. Be explicit about what NOT to do.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "Spec is obvious" | If it's obvious, write it down. Obvious-to-you ≠ obvious-to-the-implementer. |
+| "User will iterate anyway" | Iterate on the spec, not on the implementation. Cheap up front, expensive later. |
+| "Acceptance criteria are for testing, not the spec" | ACs ARE the contract. Both the implementer and reviewer read them. |
+| "Out of Scope is optional" | Out of Scope prevents scope creep. Always fill it. |
+| "I'll skip the boundaries" | Boundaries are where real bugs live. Always include them. |
+| "Open questions can wait" | Open questions block planning. List them now, answer them early. |
+| "Code style section is filler" | Code style is the one snippet the implementer imitates. Make it real. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "I'll skip the boundaries" | Boundaries are where real bugs live. Always include them. |
+| "Open questions can wait" | Open questions block planning. List them now, answer them early. |
+| "Code style section is filler" | Code style is the one snippet the implementer imitates. Make it real. |
+| "I'll add ACs as I go" | ACs are the spec. If you find one mid-implementation, the spec was incomplete. |
+| "Vague ACs are fine, the implementer will figure it out" | The implementer will guess. Wrong. Make ACs testable. |
+| "Out of Scope is for v2" | Out of Scope is for THIS feature. Empty = scope creep waiting. |
+| "I can write the spec in 5 minutes" | Fast spec = incomplete spec. Time the comprehensiveness. |
