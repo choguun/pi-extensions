@@ -32,7 +32,7 @@ Thinking "skip TDD just this once"? Stop. That's rationalization.
 - Starting a new T-XXX task from `.aidlc/plan.md`
 - A spec scenario ST-NNN from `.aidlc/spec.md` `## Test Plan` section
 - A bug found during `/test` phase or by reviewer comments
-- Any code change in `extensions/*/src/` or `extensions/*/*.ts`
+- Any code change in `extensions/*/*.ts`
 
 ## The Iron Law
 
@@ -358,7 +358,7 @@ test("context handler reads cwd from ctx, not event.cwd", async () => {
 });
 ```
 
-**Verify RED:** Run `npm test test/bootstrap.test.ts`. Test fails: "ReferenceError: event.cwd is not defined" or similar.
+**Verify RED:** Run `npm test test/bootstrap.test.ts`. Test fails: `expected /some/cwd, got undefined` or similar.
 
 **GREEN:** Fix in `bootstrap.ts` — read `ctx.cwd` instead of `event.cwd`.
 
@@ -403,11 +403,10 @@ When adding mocks or test utilities, read [testing-anti-patterns.md](testing-ant
 
 ## AIDLC-Specific Notes
 
-- Tests live in `extensions/<extension>/test/*.test.ts`
 - Run from worktree: `cd <worktree> && npm test <file>` (not from main checkout)
 - Multi-session subagents follow TDD too — they produce failing tests in their worktrees
-- The `/test` phase validates scenario coverage (ST-NNN grep) + commit history (test-before-impl)
-- Existing `agents/implementer.md` enforces this skill via iron law
+- The `/test` phase validates spec coverage (`spec.md` acceptance criteria) + commit history (test-before-impl)
+- Existing `agents/implementer.md` enforces TDD by mandating the RED step
 
 ## Final Rule
 
