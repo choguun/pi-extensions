@@ -151,8 +151,8 @@ These thoughts mean STOP — you're rationalizing:
 
 | Excuse | Reality |
 |---|---|
-| "Branch name doesn't matter" | Branch name is metadata. Use the convention (`feat/<name>`). |
-| "I won't commit state.md" | Uncommitted state.md doesn't exist for the next session. Commit. |
+| "I'll rename the branch later if needed" | Mid-cycle renames break the PR link in state and orphan the GitHub PR. Use `feat/<name>` from the start. |
+| "state.md is auto-generated, no need to commit" | Git doesn't know which files are "auto-generated". If state.md exists, commit it. |
 | "I'll hand-edit if sync fails" | `/aidlc sync` exists. Use it before hand-editing. |
 | "PHASE field can be free-form" | Phase is an enum. Wrong phase = wrong `next_action`. |
 | "Notes can be empty" | Notes are the only place "T-001 had a quirk" lives. Include them. |

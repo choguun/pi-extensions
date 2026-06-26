@@ -127,9 +127,9 @@ These thoughts mean STOP — you're rationalizing:
 
 | Excuse | Reality |
 |---|---|
-| "I'll skip the boundaries" | Boundaries are where real bugs live. Always include them. |
-| "Open questions can wait" | Open questions block planning. List them now, answer them early. |
-| "Code style section is filler" | Code style is the one snippet the implementer imitates. Make it real. |
+| "I'll fill the boundaries section after writing the spec" | If you didn't define boundaries while context was fresh, you'll skip it. Write boundaries inline. |
+| "I can answer open questions myself" | Speculative answers become silent scope expansion. Ask the human, even when you think you know. |
+| "Code style is obvious from the repo" | Future-you won't remember which file was the reference. One snippet is the citation the implementer imitates. |
 | "I'll add ACs as I go" | ACs are the spec. If you find one mid-implementation, the spec was incomplete. |
 | "Vague ACs are fine, the implementer will figure it out" | The implementer will guess. Wrong. Make ACs testable. |
 | "Out of Scope is for v2" | Out of Scope is for THIS feature. Empty = scope creep waiting. |

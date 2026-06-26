@@ -106,7 +106,7 @@ These thoughts mean STOP — you're rationalizing:
 
 | Excuse | Reality |
 |---|---|
-| "Squash vs rebase doesn't matter" | The repo has a convention. Match it. |
+| "The merge strategy doesn't affect the code, only history" | History is the audit trail. Squash loses per-task traceability. Match the repo's convention. |
 | "Branch can stay, it's only 1" | Stale branches are entropy. Delete. |
 | "State.md can wait" | No. State.md is the chain that links sessions. Update before the merge commit lands. |
 | "Reviewer will see it in CI" | CI doesn't read PR bodies. The human needs the link. |
