@@ -66,6 +66,15 @@ export interface UINotification {
 
 export type ExtensionEventHandler = (event: unknown, ctx: unknown) => Promise<void> | void;
 
+/** Shape of the `ctx` object passed to event handlers by `emit()`. */
+export interface MockExtensionContext {
+	ui: MockExtensionAPI["ui"];
+	hasUI: boolean;
+	cwd: string;
+	model: unknown;
+	sessionManager: MockExtensionAPI["sessionManager"];
+}
+
 export default class MockExtensionAPI {
 	readonly tools = new Map<string, RegisteredTool>();
 	readonly commands = new Map<string, RegisteredCommand>();
@@ -111,7 +120,7 @@ export default class MockExtensionAPI {
 	 * top level of the mock (pi's real API surfaces it both ways in
 	 * different events).
 	 */
-	ctx: { ui: typeof this.ui; hasUI: boolean; cwd: string; model: unknown; sessionManager: typeof this.sessionManager } = {
+	ctx: MockExtensionContext = {
 		ui: this.ui,
 		hasUI: true,
 		cwd: this.cwd,

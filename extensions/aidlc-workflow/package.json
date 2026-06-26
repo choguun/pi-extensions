@@ -7,7 +7,7 @@
   "main": "index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && node --test test/smoke.test.ts test/parser.test.ts test/classifier.test.ts test/branch.test.ts test/substrate.test.ts test/worktree.test.ts test/bootstrap.test.ts",
+    "test": "npm run typecheck && node --test test/*.test.ts",
     "test:smoke": "node --test test/smoke.test.ts",
     "test:parser": "node --test test/parser.test.ts",
     "test:classifier": "node --test test/classifier.test.ts",
