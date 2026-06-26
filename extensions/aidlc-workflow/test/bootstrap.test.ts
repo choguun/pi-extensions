@@ -172,7 +172,7 @@ test("messageContainsBootstrap: returns false for object with no content field",
 });
 
 test("messageContainsBootstrap: returns true when string content contains the marker", () => {
-	const msg = { role: "user", content: "before aidlc bootstrap after" };
+	const msg = { role: "user", content: "before AIDLC mode after" };
 	assert.equal(messageContainsBootstrap(msg), true);
 });
 
@@ -186,7 +186,7 @@ test("messageContainsBootstrap: returns true when one text part in array content
 		role: "assistant",
 		content: [
 			{ type: "text", text: "regular text" },
-			{ type: "text", text: "aidlc bootstrap payload" },
+			{ type: "text", text: "AIDLC mode payload" },
 		],
 	};
 	assert.equal(messageContainsBootstrap(msg), true);
@@ -261,7 +261,10 @@ test("firstNonCompactionSummaryIndex: only skips leading compactionSummary, not 
 // bootstrapExtension (default export) — wiring of event handlers
 // ---------------------------------------------------------------------------
 
-type Handler = (event: unknown) => Promise<unknown>;
+/** Mock ctx shape — pi's ExtensionContext has cwd here, not on the event. */
+type Ctx = { cwd?: string };
+
+type Handler = (event: unknown, ctx: Ctx) => Promise<unknown>;
 
 class MockExtensionAPI {
 	readonly handlers = new Map<string, Handler>();
@@ -271,10 +274,15 @@ class MockExtensionAPI {
 	}
 }
 
-function call(pi: MockExtensionAPI, event: string, payload: unknown): Promise<unknown> {
+function call(
+	pi: MockExtensionAPI,
+	event: string,
+	payload: unknown,
+	ctx: Ctx = {},
+): Promise<unknown> {
 	const handler = pi.handlers.get(event);
 	assert.ok(handler, `handler for ${event} should be registered`);
-	return handler(payload);
+	return handler(payload, ctx);
 }
 
 /** Write a minimal valid `.aidlc/state.md` so readAIDLCState() succeeds. */
@@ -312,8 +320,7 @@ test("bootstrapExtension: context handler injects bootstrap message at index 0 w
 
 		const result = (await call(pi, "context", {
 			messages: [{ role: "user", content: "hello" }],
-			cwd: dir,
-		})) as { messages: Array<{ role: string; content: unknown }> };
+		}, { cwd: dir })) as { messages: Array<{ role: string; content: unknown }> };
 
 		assert.ok(result, "context handler should return a result when injecting");
 		assert.ok(Array.isArray(result.messages));
@@ -343,8 +350,7 @@ test("bootstrapExtension: context handler returns undefined when .aidlc director
 
 		const result = await call(pi, "context", {
 			messages: [{ role: "user", content: "hello" }],
-			cwd: dir,
-		});
+		}, { cwd: dir });
 
 		assert.equal(result, undefined);
 	} finally {
@@ -386,8 +392,7 @@ test("bootstrapExtension: session_compact re-arms the injection flag", async () 
 
 		const result = (await call(pi, "context", {
 			messages: [],
-			cwd: dir,
-		})) as { messages: Array<unknown> };
+		}, { cwd: dir })) as { messages: Array<unknown> };
 
 		assert.ok(result);
 		assert.equal(result.messages.length, 1);
@@ -409,11 +414,10 @@ test("bootstrapExtension: context handler does NOT double-inject when bootstrap 
 			messages: [
 				{
 					role: "user",
-					content: [{ type: "text", text: "aidlc bootstrap already there" }],
+					content: [{ type: "text", text: "previous turn — AIDLC mode bootstrap already in history" }],
 				},
 			],
-			cwd: dir,
-		});
+		}, { cwd: dir });
 
 		assert.equal(result, undefined, "context handler must skip when a message already carries the marker");
 	} finally {
@@ -436,8 +440,7 @@ test("bootstrapExtension: context handler inserts after leading compactionSummar
 				{ role: "compactionSummary" },
 				{ role: "user", content: "hello" },
 			],
-			cwd: dir,
-		})) as { messages: Array<{ role: string; content: unknown }> };
+		}, { cwd: dir })) as { messages: Array<{ role: string; content: unknown }> };
 
 		assert.ok(result);
 		assert.equal(result.messages.length, 4);
@@ -454,5 +457,58 @@ test("bootstrapExtension: context handler inserts after leading compactionSummar
 		assert.equal(result.messages[3].role, "user");
 	} finally {
 		cleanup(dir);
+	}
+});
+
+test("bootstrapExtension: context handler reads cwd from ctx, not event.cwd or process.cwd()", async () => {
+	// Regression test for the F1.5 review's Critical #1: the handler must read
+	// `ctx.cwd` (pi's ExtensionContext), not `event.cwd` (which is undefined on
+	// ContextEvent) and not `process.cwd()` (which is the shell's cwd, not
+	// necessarily the project's cwd).
+	const dirWithState = tmpDir("aidlc-bootstrap-ctx-state-");
+	mkdirSync(join(dirWithState, ".aidlc"));
+	writeFileSync(
+		join(dirWithState, ".aidlc", "state.md"),
+		`- **Phase**: ctx-cwd-phase
+- **Branch**: feat/from-ctx
+- **PR**: 99
+- **Notes**: ctx-cwd-fixture
+`,
+	);
+	const dirNoState = tmpDir("aidlc-bootstrap-ctx-empty-");
+	const originalCwd = process.cwd();
+	// Point process.cwd() at a directory with NO `.aidlc/`. If the handler
+	// falls back to process.cwd(), it will see no state and skip injection —
+	// making this test fail.
+	process.chdir(dirNoState);
+	try {
+		const pi = new MockExtensionAPI();
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+
+		await call(pi, "session_start", {});
+
+		// Pass cwd ONLY via ctx. event.cwd is intentionally absent.
+		const result = (await call(pi, "context", {
+			messages: [{ role: "user", content: "hello" }],
+		}, { cwd: dirWithState })) as { messages: Array<{ role: string; content: unknown }> };
+
+		assert.ok(result, "context handler must inject bootstrap when ctx.cwd points at a valid .aidlc/");
+		assert.ok(Array.isArray(result.messages));
+		assert.equal(result.messages.length, 2);
+		const inserted = result.messages[0];
+		assert.equal(inserted.role, "user");
+		const text = (inserted.content as Array<{ type: string; text: string }>)[0].text;
+		assert.ok(
+			text.includes("ctx-cwd-phase"),
+			`bootstrap must contain phase from ctx.cwd's state.md; got: ${text.slice(0, 200)}`,
+		);
+		assert.ok(
+			text.includes("feat/from-ctx"),
+			"bootstrap must contain branch from ctx.cwd's state.md",
+		);
+	} finally {
+		process.chdir(originalCwd);
+		cleanup(dirWithState);
+		cleanup(dirNoState);
 	}
 });

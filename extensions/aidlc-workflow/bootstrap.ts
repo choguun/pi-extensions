@@ -7,10 +7,8 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const EXTREMELY_IMPORTANT_MARKER = "<EXTREMELY_IMPORTANT>";
-const BOOTSTRAP_MARKER = "aidlc bootstrap";
+const BOOTSTRAP_MARKER = "AIDLC mode";
 const SUBAGENT_STOP_TAG = "<SUBAGENT-STOP>";
-
-let injectBootstrap = true;
 
 export interface AIDLCState {
   phase: string;
@@ -125,6 +123,10 @@ export function firstNonCompactionSummaryIndex(messages: unknown[]): number {
 }
 
 export default function bootstrapExtension(pi: ExtensionAPI): void {
+  // Per-extension flag, NOT module-scope: two pi sessions on the same machine
+  // (multi-session extension) must not share injection state.
+  let injectBootstrap = true;
+
   pi.on("session_start", async () => {
     injectBootstrap = true;
   });
@@ -137,11 +139,14 @@ export default function bootstrapExtension(pi: ExtensionAPI): void {
     injectBootstrap = false;
   });
 
-  pi.on("context", async (event: any) => {
+  pi.on("context", async (event, ctx) => {
     if (!injectBootstrap) return;
     if (event.messages.some(messageContainsBootstrap)) return;
 
-    const cwd = event.cwd ?? process.cwd();
+    // cwd lives on pi's ExtensionContext (ctx), NOT on ContextEvent.
+    // Reading from event.cwd or process.cwd() is wrong whenever pi's cwd
+    // differs from the shell's cwd (multi-project, multi-session, `pi --cwd`).
+    const cwd = ctx.cwd;
     const aidlcDir = join(cwd, ".aidlc");
     if (!existsSync(aidlcDir)) return;
 
