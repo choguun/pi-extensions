@@ -17,7 +17,7 @@ Violating the letter of this rule is violating the spirit of the rule.
 
 ## Hard Rules
 
-1. **Write the failing test FIRST.** Before any production code in `extensions/*/src/` or `extensions/*/*.ts`.
+1. **Write the failing test FIRST.** Before any production code in `extensions/<extension>/*.ts`.
 2. **Run the test and paste the FAIL output.** Mandatory verification step.
 3. **Write the minimum implementation to pass.** No "while I'm here" improvements.
 4. **Run the test again and paste the PASS output.** Mandatory verification step.
