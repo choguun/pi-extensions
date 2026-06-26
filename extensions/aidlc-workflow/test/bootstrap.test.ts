@@ -9,7 +9,12 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readAIDLCState, type AIDLCState } from "../bootstrap.ts";
+import {
+	readAIDLCState,
+	messageContainsBootstrap,
+	firstNonCompactionSummaryIndex,
+	type AIDLCState,
+} from "../bootstrap.ts";
 
 function tmpDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -147,4 +152,106 @@ test("readAIDLCState: typed return matches AIDLCState interface", () => {
 	} finally {
 		cleanup(dir);
 	}
+});
+
+// ---------------------------------------------------------------------------
+// messageContainsBootstrap
+// ---------------------------------------------------------------------------
+
+test("messageContainsBootstrap: returns false for undefined", () => {
+	assert.equal(messageContainsBootstrap(undefined), false);
+});
+
+test("messageContainsBootstrap: returns false for null", () => {
+	assert.equal(messageContainsBootstrap(null), false);
+});
+
+test("messageContainsBootstrap: returns false for object with no content field", () => {
+	assert.equal(messageContainsBootstrap({ role: "user" }), false);
+});
+
+test("messageContainsBootstrap: returns true when string content contains the marker", () => {
+	const msg = { role: "user", content: "before aidlc bootstrap after" };
+	assert.equal(messageContainsBootstrap(msg), true);
+});
+
+test("messageContainsBootstrap: returns false when string content lacks the marker", () => {
+	const msg = { role: "user", content: "no marker here" };
+	assert.equal(messageContainsBootstrap(msg), false);
+});
+
+test("messageContainsBootstrap: returns true when one text part in array content contains the marker", () => {
+	const msg = {
+		role: "assistant",
+		content: [
+			{ type: "text", text: "regular text" },
+			{ type: "text", text: "aidlc bootstrap payload" },
+		],
+	};
+	assert.equal(messageContainsBootstrap(msg), true);
+});
+
+test("messageContainsBootstrap: returns false when no text part in array content contains the marker", () => {
+	const msg = {
+		role: "assistant",
+		content: [
+			{ type: "text", text: "hello" },
+			{ type: "image", url: "x" },
+		],
+	};
+	assert.equal(messageContainsBootstrap(msg), false);
+});
+
+test("messageContainsBootstrap: returns false for empty content array", () => {
+	const msg = { role: "user", content: [] };
+	assert.equal(messageContainsBootstrap(msg), false);
+});
+
+test("messageContainsBootstrap: returns false when content is a non-string, non-array type", () => {
+	const msg = { role: "user", content: 42 };
+	assert.equal(messageContainsBootstrap(msg), false);
+});
+
+// ---------------------------------------------------------------------------
+// firstNonCompactionSummaryIndex
+// ---------------------------------------------------------------------------
+
+test("firstNonCompactionSummaryIndex: returns 0 for empty array", () => {
+	assert.equal(firstNonCompactionSummaryIndex([]), 0);
+});
+
+test("firstNonCompactionSummaryIndex: returns 0 when no message has role=compactionSummary", () => {
+	const msgs = [{ role: "user" }, { role: "assistant" }];
+	assert.equal(firstNonCompactionSummaryIndex(msgs), 0);
+});
+
+test("firstNonCompactionSummaryIndex: skips a single leading compactionSummary", () => {
+	const msgs = [{ role: "compactionSummary" }, { role: "user" }];
+	assert.equal(firstNonCompactionSummaryIndex(msgs), 1);
+});
+
+test("firstNonCompactionSummaryIndex: skips multiple leading compactionSummary messages", () => {
+	const msgs = [
+		{ role: "compactionSummary" },
+		{ role: "compactionSummary" },
+		{ role: "user" },
+	];
+	assert.equal(firstNonCompactionSummaryIndex(msgs), 2);
+});
+
+test("firstNonCompactionSummaryIndex: returns length when all messages are compactionSummary", () => {
+	const msgs = [
+		{ role: "compactionSummary" },
+		{ role: "compactionSummary" },
+	];
+	assert.equal(firstNonCompactionSummaryIndex(msgs), 2);
+});
+
+test("firstNonCompactionSummaryIndex: only skips leading compactionSummary, not interior ones", () => {
+	const msgs = [
+		{ role: "compactionSummary" },
+		{ role: "user" },
+		{ role: "compactionSummary" },
+	];
+	assert.equal(firstNonCompactionSummaryIndex(msgs), 1);
 });

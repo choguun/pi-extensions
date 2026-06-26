@@ -98,3 +98,27 @@ export function buildBootstrapContent(state: AIDLCState | null): string {
     .replace("{{branch}}", state.branch)
     .replace("{{pr}}", state.pr);
 }
+
+export function messageContainsBootstrap(message: unknown): boolean {
+  if (message === null || message === undefined) return false;
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content.includes(BOOTSTRAP_MARKER);
+  if (!Array.isArray(content)) return false;
+  return content.some((part) => {
+    return (
+      part &&
+      typeof part === "object" &&
+      (part as { type?: unknown }).type === "text" &&
+      typeof (part as { text?: unknown }).text === "string" &&
+      (part as { text: string }).text.includes(BOOTSTRAP_MARKER)
+    );
+  });
+}
+
+export function firstNonCompactionSummaryIndex(messages: unknown[]): number {
+  let index = 0;
+  while ((messages[index] as { role?: unknown } | undefined)?.role === "compactionSummary") {
+    index += 1;
+  }
+  return index;
+}
