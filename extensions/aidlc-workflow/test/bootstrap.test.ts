@@ -15,6 +15,7 @@ import {
 	firstNonCompactionSummaryIndex,
 	type AIDLCState,
 } from "../bootstrap.ts";
+import bootstrapExtension from "../bootstrap.ts";
 
 function tmpDir(prefix: string): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -254,4 +255,204 @@ test("firstNonCompactionSummaryIndex: only skips leading compactionSummary, not 
 		{ role: "compactionSummary" },
 	];
 	assert.equal(firstNonCompactionSummaryIndex(msgs), 1);
+});
+
+// ---------------------------------------------------------------------------
+// bootstrapExtension (default export) — wiring of event handlers
+// ---------------------------------------------------------------------------
+
+type Handler = (event: unknown) => Promise<unknown>;
+
+class MockExtensionAPI {
+	readonly handlers = new Map<string, Handler>();
+
+	on(event: string, handler: Handler): void {
+		this.handlers.set(event, handler);
+	}
+}
+
+function call(pi: MockExtensionAPI, event: string, payload: unknown): Promise<unknown> {
+	const handler = pi.handlers.get(event);
+	assert.ok(handler, `handler for ${event} should be registered`);
+	return handler(payload);
+}
+
+/** Write a minimal valid `.aidlc/state.md` so readAIDLCState() succeeds. */
+function writeAIDLCState(dir: string): void {
+	mkdirSync(join(dir, ".aidlc"));
+	writeFileSync(
+		join(dir, ".aidlc", "state.md"),
+		`- **Phase**: implementing
+- **Branch**: feat/test
+- **PR**: 42
+- **Notes**: fixture
+`,
+	);
+}
+
+test("bootstrapExtension: registers session_start, session_compact, agent_end, and context handlers", () => {
+	const pi = new MockExtensionAPI();
+	bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+
+	assert.ok(pi.handlers.has("session_start"), "session_start handler missing");
+	assert.ok(pi.handlers.has("session_compact"), "session_compact handler missing");
+	assert.ok(pi.handlers.has("agent_end"), "agent_end handler missing");
+	assert.ok(pi.handlers.has("context"), "context handler missing");
+});
+
+test("bootstrapExtension: context handler injects bootstrap message at index 0 when .aidlc exists and flag is on", async () => {
+	const dir = tmpDir("aidlc-bootstrap-ext-");
+	writeAIDLCState(dir);
+	try {
+		const pi = new MockExtensionAPI();
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+
+		// session_start sets injectBootstrap = true
+		await call(pi, "session_start", {});
+
+		const result = (await call(pi, "context", {
+			messages: [{ role: "user", content: "hello" }],
+			cwd: dir,
+		})) as { messages: Array<{ role: string; content: unknown }> };
+
+		assert.ok(result, "context handler should return a result when injecting");
+		assert.ok(Array.isArray(result.messages));
+		assert.equal(result.messages.length, 2);
+		const inserted = result.messages[0];
+		assert.equal(inserted.role, "user");
+		// The injected content is an array with at least one text part containing the active-loop template.
+		assert.ok(Array.isArray(inserted.content));
+		const text = (inserted.content as Array<{ type: string; text: string }>)[0].text;
+		assert.equal(typeof text, "string");
+		assert.ok(text.length > 0, "inserted message text should be non-empty");
+		assert.ok(text.includes("implementing"), "inserted message should include phase from state.md");
+		assert.ok(text.includes("feat/test"), "inserted message should include branch from state.md");
+		assert.equal(result.messages[1].role, "user"); // original message preserved
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("bootstrapExtension: context handler returns undefined when .aidlc directory is missing", async () => {
+	const dir = tmpDir("aidlc-bootstrap-ext-");
+	try {
+		const pi = new MockExtensionAPI();
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+
+		await call(pi, "session_start", {});
+
+		const result = await call(pi, "context", {
+			messages: [{ role: "user", content: "hello" }],
+			cwd: dir,
+		});
+
+		assert.equal(result, undefined);
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("bootstrapExtension: context handler skips injection after agent_end resets the flag", async () => {
+	const dir = tmpDir("aidlc-bootstrap-ext-");
+	writeAIDLCState(dir);
+	try {
+		const pi = new MockExtensionAPI();
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+
+		await call(pi, "session_start", {});
+		await call(pi, "agent_end", {});
+
+		const result = await call(pi, "context", {
+			messages: [{ role: "user", content: "hello" }],
+			cwd: dir,
+		});
+
+		assert.equal(result, undefined);
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("bootstrapExtension: session_compact re-arms the injection flag", async () => {
+	const dir = tmpDir("aidlc-bootstrap-ext-");
+	writeAIDLCState(dir);
+	try {
+		const pi = new MockExtensionAPI();
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+
+		// Reset flag, then re-arm via session_compact.
+		await call(pi, "agent_end", {});
+		await call(pi, "session_compact", {});
+
+		const result = (await call(pi, "context", {
+			messages: [],
+			cwd: dir,
+		})) as { messages: Array<unknown> };
+
+		assert.ok(result);
+		assert.equal(result.messages.length, 1);
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("bootstrapExtension: context handler does NOT double-inject when bootstrap marker is already present", async () => {
+	const dir = tmpDir("aidlc-bootstrap-ext-");
+	writeAIDLCState(dir);
+	try {
+		const pi = new MockExtensionAPI();
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+
+		await call(pi, "session_start", {});
+
+		const result = await call(pi, "context", {
+			messages: [
+				{
+					role: "user",
+					content: [{ type: "text", text: "aidlc bootstrap already there" }],
+				},
+			],
+			cwd: dir,
+		});
+
+		assert.equal(result, undefined, "context handler must skip when a message already carries the marker");
+	} finally {
+		cleanup(dir);
+	}
+});
+
+test("bootstrapExtension: context handler inserts after leading compactionSummary messages", async () => {
+	const dir = tmpDir("aidlc-bootstrap-ext-");
+	writeAIDLCState(dir);
+	try {
+		const pi = new MockExtensionAPI();
+		bootstrapExtension(pi as unknown as Parameters<typeof bootstrapExtension>[0]);
+
+		await call(pi, "session_start", {});
+
+		const result = (await call(pi, "context", {
+			messages: [
+				{ role: "compactionSummary" },
+				{ role: "compactionSummary" },
+				{ role: "user", content: "hello" },
+			],
+			cwd: dir,
+		})) as { messages: Array<{ role: string; content: unknown }> };
+
+		assert.ok(result);
+		assert.equal(result.messages.length, 4);
+		// First two are compaction summaries, unchanged.
+		assert.equal(result.messages[0].role, "compactionSummary");
+		assert.equal(result.messages[1].role, "compactionSummary");
+		// Index 2 is the freshly-inserted bootstrap (user role, has non-empty text content).
+		assert.equal(result.messages[2].role, "user");
+		const insertedContent = result.messages[2].content as Array<{ type: string; text: string }>;
+		assert.ok(Array.isArray(insertedContent));
+		assert.equal(insertedContent[0].type, "text");
+		assert.ok(insertedContent[0].text.length > 0);
+		// Index 3 is the original user message, pushed back.
+		assert.equal(result.messages[3].role, "user");
+	} finally {
+		cleanup(dir);
+	}
 });

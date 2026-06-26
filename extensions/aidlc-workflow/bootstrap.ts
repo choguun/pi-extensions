@@ -4,6 +4,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const EXTREMELY_IMPORTANT_MARKER = "<EXTREMELY_IMPORTANT>";
 const BOOTSTRAP_MARKER = "aidlc bootstrap";
@@ -121,4 +122,44 @@ export function firstNonCompactionSummaryIndex(messages: unknown[]): number {
     index += 1;
   }
   return index;
+}
+
+export default function bootstrapExtension(pi: ExtensionAPI): void {
+  pi.on("session_start", async () => {
+    injectBootstrap = true;
+  });
+
+  pi.on("session_compact", async () => {
+    injectBootstrap = true;
+  });
+
+  pi.on("agent_end", async () => {
+    injectBootstrap = false;
+  });
+
+  pi.on("context", async (event: any) => {
+    if (!injectBootstrap) return;
+    if (event.messages.some(messageContainsBootstrap)) return;
+
+    const cwd = event.cwd ?? process.cwd();
+    const aidlcDir = join(cwd, ".aidlc");
+    if (!existsSync(aidlcDir)) return;
+
+    const state = readAIDLCState(cwd);
+    const bootstrap = buildBootstrapContent(state);
+    const bootstrapMessage = {
+      role: "user" as const,
+      content: [{ type: "text" as const, text: bootstrap }],
+      timestamp: Date.now(),
+    };
+
+    const insertAt = firstNonCompactionSummaryIndex(event.messages);
+    return {
+      messages: [
+        ...event.messages.slice(0, insertAt),
+        bootstrapMessage,
+        ...event.messages.slice(insertAt),
+      ],
+    };
+  });
 }
