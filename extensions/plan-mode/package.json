@@ -1,0 +1,26 @@
+{
+  "name": "plan-mode",
+  "version": "0.1.0",
+  "description": "Claude Code / OpenCode-style plan mode for pi — read-only exploration, parallel explore agents, plan written to a single file, explicit plan_enter/plan_exit tools. Pattern-based permission ruleset.",
+  "type": "module",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && node --test test/permissions.test.ts test/utils.test.ts test/smoke.test.ts",
+    "test:permissions": "node --test test/permissions.test.ts",
+    "test:utils": "node --test test/utils.test.ts",
+    "test:smoke": "node --test test/smoke.test.ts"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@types/node": "^22.0.0",
+    "typebox": "^1.0.0",
+    "typescript": "^5.5.0"
+  },
+  "dependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "comments": "Resolved from the user's globally-installed pi package. Set a concrete version range before publishing."
+    }
+  }
+}
