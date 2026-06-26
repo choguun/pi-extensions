@@ -31,6 +31,12 @@
  * owner of the `.aidlc/` lifecycle that bootstrap tests need this mock for.
  */
 
+export interface ToolResult {
+	content: Array<{ type: "text"; text: string }>;
+	isError?: boolean;
+	details?: unknown;
+}
+
 export interface RegisteredTool {
 	name: string;
 	label: string;
@@ -38,7 +44,18 @@ export interface RegisteredTool {
 	parameters: unknown;
 	promptSnippet?: string;
 	promptGuidelines?: string[];
-	execute: (...args: unknown[]) => Promise<unknown>;
+	// Matches pi's real `ToolDefinition.execute` shape:
+	//   execute(toolCallId, params, signal, onUpdate, ctx)
+	// The smoke tests pass all five (some as `undefined`). The mock only
+	// uses the first two; signal/onUpdate/ctx are accepted so call sites
+	// that pass them don't trip TS2554.
+	execute: (
+		toolCallId: string,
+		params: unknown,
+		signal?: unknown,
+		onUpdate?: unknown,
+		ctx?: unknown,
+	) => Promise<ToolResult>;
 	renderCall?: (...args: unknown[]) => unknown;
 	renderResult?: (...args: unknown[]) => unknown;
 }
