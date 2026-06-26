@@ -3,6 +3,11 @@ name: implement
 description: Implements a single task from the AIDLC plan using TDD. Use when the current AIDLC phase=implementing and the user invoked `/implement T-XXX`. One task at a time.
 ---
 
+<HARD-GATE>
+When a bug is found during implementation, invoke `systematic-debugging`
+before patching. Iron law: NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST.
+</HARD-GATE>
+
 # Implement
 
 Take ONE task from `.aidlc/plan.md` and implement it using TDD. **One task per session** — never bundle.
@@ -135,3 +140,28 @@ Update state:
 - **Bigger commits**: 1 commit per TDD cycle. Not 1 commit per task. Not 1 commit per day.
 - **Not running the existing test suite**: you might break something. Always run before declaring done.
 - **Not pushing**: if the work isn't pushed, it doesn't exist for the next phase
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "I'll write the test after" | That's not TDD. Tests-after prove nothing — you never saw them catch the bug. |
+| "This is too simple for TDD" | Simple code breaks. Test takes 30 seconds. |
+| "I'm just exploring" | Fine. Throw away the exploration, start with TDD. |
+| "The existing code has no tests" | You're improving it. Add tests as you go. |
+| "The bug is obvious, I'll just patch" | Obvious-to-you ≠ root-caused. Use `systematic-debugging` — 5 min saves 5 hours. |
+| "I'll bundle two tasks in one commit" | One task per session, one commit per TDD cycle. Bundling hides failures. |
+| "Manual smoke is enough" | Manual smoke proves one run. Tests prove every run. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "TDD will slow me down" | TDD is faster than debugging after. Pragmatic = test-first. |
+| "Need to explore first" | OK — throw away the exploration, start with TDD. |
+| "Manual test is faster" | Manual doesn't prove edge cases. Re-run every change. |
+| "The task is just one line" | One line still has a test. The commit doesn't get to skip RED. |
+| "I'll fix the bug, then add the test" | Reverse order. Test reproduces the bug first. |
+| "I'll skip the failing pre-existing test" | Note it. Don't silently bypass. The next phase needs to know. |

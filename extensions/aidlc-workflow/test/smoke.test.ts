@@ -22,46 +22,19 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
-// =============================================================================
-// Mock ExtensionAPI
-// =============================================================================
+import MockExtensionAPI from "./mock-extension-api.ts";
 
-interface RegisteredTool {
-	name: string;
-	label: string;
-	description: string;
-	parameters: unknown;
-	execute: (...args: unknown[]) => Promise<unknown>;
-	renderCall?: (...args: unknown[]) => unknown;
-	renderResult?: (...args: unknown[]) => unknown;
-}
+// Re-export so existing tests can keep using the same name.
+export { MockExtensionAPI };
 
-interface RegisteredCommand {
-	name: string;
-	description: string;
-	handler: (...args: unknown[]) => Promise<unknown> | unknown;
-}
-
-class MockExtensionAPI {
-	readonly tools = new Map<string, RegisteredTool>();
-	readonly commands = new Map<string, RegisteredCommand>();
-	readonly sentMessages: string[] = [];
-
-	sendUserMessage(message: string): void {
-		this.sentMessages.push(message);
-	}
-
-	registerTool(tool: RegisteredTool): void {
-		this.tools.set(tool.name, tool);
-	}
-
-	registerCommand(name: string, command: { description: string; handler: RegisteredCommand["handler"] }): void {
-		this.commands.set(name, {
-			name,
-			description: command.description,
-			handler: command.handler,
-		});
-	}
+/**
+ * Sent-message accessors kept for AIDLC smoke test compatibility.
+ * The shared mock captures messages as `{ text, options? }` objects; the
+ * original AIDLC mock captured raw strings. These helpers convert between
+ * the two shapes so existing assertions don't have to change.
+ */
+function sentTexts(pi: MockExtensionAPI): string[] {
+	return pi.sentUserMessages.map((m) => m.text);
 }
 
 // =============================================================================
@@ -372,13 +345,14 @@ test("slash command handlers invoke the matching skill via sendUserMessage", asy
 
 		// Reset the sent-messages buffer for each command so we can assert
 		// each command sends exactly one message.
-		pi.sentMessages.length = 0;
+		pi.sentUserMessages.length = 0;
 
 		await cmd.handler("test args", ctx);
-		assert.equal(pi.sentMessages.length, 1, `command /${name} should call sendUserMessage exactly once`);
+		const texts = sentTexts(pi);
+		assert.equal(texts.length, 1, `command /${name} should call sendUserMessage exactly once`);
 		assert.ok(
-			pi.sentMessages[0].startsWith(`/${name}`),
-			`command /${name} should send a directive starting with /${name}, got: ${pi.sentMessages[0]}`,
+			texts[0].startsWith(`/${name}`),
+			`command /${name} should send a directive starting with /${name}, got: ${texts[0]}`,
 		);
 	}
 });

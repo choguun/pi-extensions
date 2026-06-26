@@ -166,3 +166,27 @@ Stop when the repo has:
 - [ ] A backlog of known entropy items, with dates
 
 That's enough. Don't over-engineer. The agent can iterate from there.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "I'll set up later" | Later is never. The repo won't get more legible on its own. |
+| "This codebase is special" | Every codebase has a build command. Read it, document it. |
+| "The dev stack works on my machine" | Worktree-safe means works from any directory. Verify. |
+| "Skip the pre-commit hook" | Without it, CI rejects your PR. Wasted round-trip. |
+| "AGENTS.md is just docs" | AGENTS.md is the agent's operating manual. Drift = wrong assumptions. |
+| "I know the build command" | Knowing ≠ documenting. If it's not in AGENTS.md, the next agent doesn't. |
+| "Verify gate is overkill" | Without a verify gate, PRs ship unverified code. The gate is the harness. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "MAP.md is overkill for small repos" | 100 lines, 1 per directory. The cost of writing it is the cost of grepping. |
+| "Verify gate can wait" | Without a verify gate, PRs ship unverified code. Build it now. |
+| "I'll do entropy control when needed" | Weekly. Schedule it. Or entropy wins. |
+| "The pre-commit hook is CI's job" | CI rejects the PR. The hook prevents the rejection. |
+| "Existing scaffolding is fine" | Read it first. "Fine" to you ≠ verified-legible. |

@@ -19,6 +19,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import MockExtensionAPI from "../../aidlc-workflow/test/mock-extension-api.ts";
+
+// Re-export so existing tests can keep using the same name.
+export { MockExtensionAPI };
+
 // Set env vars BEFORE importing the extension. These take effect when
 // `getAgentDir()` and `readPollIntervalMs()` run.
 const AGENT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "multi-session-smoke-"));
@@ -32,101 +37,10 @@ import { registryKey } from "../protocol.ts";
 // =============================================================================
 // Mock ExtensionAPI
 // =============================================================================
-
-interface RegisteredTool {
-	name: string;
-	label: string;
-	description: string;
-	parameters: unknown;
-	promptSnippet?: string;
-	promptGuidelines?: string[];
-	execute: (id: string, params: any) => Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean; details?: any }>;
-}
-
-interface RegisteredCommand {
-	name: string;
-	description: string;
-	handler: (args: string, ctx: any) => Promise<void> | void;
-}
-
-class MockExtensionAPI {
-	readonly tools = new Map<string, RegisteredTool>();
-	readonly commands = new Map<string, RegisteredCommand>();
-	readonly eventHandlers = new Map<string, Array<(event: any, ctx: any) => Promise<void> | void>>();
-	readonly sentUserMessages: Array<{ text: string; options?: any }> = [];
-	readonly sentCustomMessages: Array<{ type: string; content: string }> = [];
-	readonly uiNotifications: Array<{ level: string; message: string }> = [];
-
-	// Session manager mock — initialized in the constructor.
-	sessionId = "";
-	sessionFile: string | null = null;
-	sessionName = "";
-	cwd = "/Users/test/proj";
-	model: { provider: string; id: string } | null = { provider: "anthropic", id: "claude-sonnet-4-5" };
-	thinkingLevel: string = "medium";
-
-	sessionManager = {
-		getSessionId: () => this.sessionId,
-		getSessionFile: () => this.sessionFile,
-		getSessionName: () => this.sessionName,
-	};
-
-	ui = {
-		notify: (message: string, level: string) => {
-			this.uiNotifications.push({ level, message });
-		},
-		select: async (title: string, options: string[]) => {
-			// First option for determinism.
-			return options[0];
-		},
-		setEditorText: (_text: string) => {
-			// No-op for the test.
-		},
-	};
-
-	ctx = {
-		ui: this.ui,
-		hasUI: true,
-		cwd: "/Users/test/proj",
-		model: this.model,
-		sessionManager: this.sessionManager,
-	};
-
-	on(event: string, handler: (event: any, ctx: any) => Promise<void> | void): void {
-		const list = this.eventHandlers.get(event) ?? [];
-		list.push(handler);
-		this.eventHandlers.set(event, list);
-	}
-
-	async emit(event: string, payload: any = {}): Promise<void> {
-		const list = this.eventHandlers.get(event) ?? [];
-		for (const h of list) await h(payload, this.ctx);
-	}
-
-	registerTool(tool: RegisteredTool): void {
-		this.tools.set(tool.name, tool);
-	}
-
-	registerCommand(name: string, command: { description: string; handler: RegisteredCommand["handler"] }): void {
-		this.commands.set(name, {
-			name,
-			description: command.description,
-			handler: command.handler,
-		});
-	}
-
-	sendUserMessage(text: string, options?: any): void {
-		this.sentUserMessages.push({ text, options });
-	}
-
-	sendMessage(message: { customType: string; content: string; display: boolean }): void {
-		this.sentCustomMessages.push({ type: message.customType, content: message.content });
-	}
-
-	getThinkingLevel(): string {
-		return this.thinkingLevel;
-	}
-}
+//
+// Uses the SHARED MockExtensionAPI from `extensions/aidlc-workflow/test/mock-extension-api.ts`.
+// Both smoke tests share the same mock so future changes (e.g. capturing
+// `ctx.cwd` for bootstrap tests) only need to land in one place.
 
 // =============================================================================
 // Helpers

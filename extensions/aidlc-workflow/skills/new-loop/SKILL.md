@@ -105,3 +105,26 @@ cat domains/<name>/.aidlc/state.md
 
 If any of these fail, the scaffold is broken — fix before reporting
 success.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "I'll use the existing one" | A loop you can't find isn't a loop. New domain, new folder. |
+| "Loops are overhead" | A one-off task is a backlog line, not a loop. The skill name says it. |
+| "I'll skip the test-run" | The test-run is the proof the loop is wired up. Skip it = lie about done. |
+| "I can write the README later" | The README IS the live state. No README = no loop. |
+| "The substrate probably exists" | Verify. Don't assume. Missing `signals/` or `LOG.md` = broken loop. |
+| "I'll make the cadence 'whenever'" | A loop without a cadence is a backlog. Pick one (default: `manual`). |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "The name doesn't matter" | The name is the folder path. Pick a stable kebab-case one. |
+| "I'll just use the AIDLC default state" | The default state says "Run /aidlc start". For a new loop, that's wrong. |
+| "Smoke test is overkill" | The smoke test proves the verify phase works. One command, 10 seconds. |
+| "I'll skip the LOG.md entry" | No LOG.md entry = the loop never existed. Record it. |
+| "The cadence can be decided later" | Cadence is an input. If you don't have one, ask before scaffolding. |

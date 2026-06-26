@@ -116,3 +116,27 @@ Timeline entries into the older signal, delete the newer).
 - **Don't downgrade a signal's priority.** If a `P0` becomes a `P1`
   later, that's a downgrade — explain why in the Timeline, but don't
   silently lower the priority without human review.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "I'll handle signals ad-hoc" | Ad-hoc dedup fails. Two people create two "cache race condition" signals. |
+| "Frequencies don't matter" | Frequency is the dedup key. Without it, every comment is a new signal. |
+| "Sources aren't required" | No source = untraceable. Always include the PR URL. |
+| "I'll just print, not write" | Print ≠ persist. The signal must live in `signals/`. |
+| "Duplicate signal is fine" | Two signals for one root cause = noise. Merge. |
+| "I'll skip the Timeline entry" | No Timeline = no audit trail. Add it. |
+| "Frequency 1 means unimportant" | Frequency 1 with a real PR source is a real signal. Read before dismissing. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "P0 → P1 is fine to lower" | Priority downgrades need human review. Document the reason in the Timeline. |
+| "Frequency 1 can be closed" | Frequency 1 with PR source = real signal. Read the body before closing. |
+| "Slug is just a name" | The slug is the file path. Kebab-case, ≤ 40 chars, stable. |
+| "I'll batch the LOG.md entry later" | No later. Append after each triage batch. |
+| "Auto-closing is fine if it's old" | Age alone isn't reason to close. Read the signal first. |

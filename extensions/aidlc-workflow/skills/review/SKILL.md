@@ -133,3 +133,27 @@ The approval standard: **approve a change when it definitely improves overall co
 - **Being too harsh**: P2s are advisory. Don't block ship on style nits.
 - **Not posting the review**: the report is the deliverable. Posting a summary on the PR closes the feedback loop.
 - **Not updating state**: the next phase needs to know the review is done.
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "It's small, no need to review" | Small changes have bugs too. Five-axis review, always. |
+| "I'll trust my own work" | You're the reviewer, not the author. Different hat. |
+| "LGTM with minor nit" | P2 nits aren't blockers. Approve or block — don't half-approve. |
+| "The code matches the spec" | That's correctness 1 of 5 axes. Check readability, architecture, security, performance. |
+| "I'll skip security/performance this time" | Both axes. Every review. No exceptions. |
+| "Architecture is fine, it runs" | Running ≠ right. Check module boundaries, abstractions, type discipline. |
+| "It's just a refactor" | Refactors introduce bugs. Five-axis review still applies. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "Review took 5 minutes, must be thorough" | Five-axis review takes time. Short review = shallow review. |
+| "I won't post the report" | The report IS the deliverable. Posting a one-liner = no review. |
+| "P2 is optional, skip it" | P2s become P1s. Track them in the report. |
+| "Approve-with-comments is fine" | Approve-with-comments must include the comments. Half-approved = not reviewed. |
+| "The tests pass, so it's correct" | Tests passing ≠ behavior right. Run the review's correctness axis anyway. |

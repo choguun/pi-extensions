@@ -135,3 +135,26 @@ The loop continues until `/ship` is reached and the PR is merged. If new comment
 - `review` — the review phase skill
 - `ship` — the ship phase skill
 - `state-management` — how state is read/written/persisted
+
+## Red Flags
+
+These thoughts mean STOP — you're rationalizing:
+
+| Thought | Reality |
+|---|---|
+| "This task is too small for AIDLC" | Every task goes through AIDLC. "Small" tasks are where unexamined assumptions cause the most wasted work. |
+| "I'll just check state.md manually" | The state machine exists to track this for you. Re-read the spec for `/aidlc next` instead. |
+| "I can skip the spec phase" | No. The spec is the contract; skipping it means rebuilding later. |
+| "AIDLC overhead is too much" | AIDLC's overhead is less than the cost of rework. Time it before complaining. |
+| "The phase doesn't apply" | If you can't see how a phase applies, you haven't read this skill. |
+| "I'll skip /aidlc sync" | Local state and remote state drift. Sync before trusting either. |
+
+## Common Rationalizations
+
+| Excuse | Reality |
+|---|---|
+| "Too simple to need AIDLC" | Simple tasks break too. The discipline is fast for simple tasks. |
+| "I'll catch up later" | Later never comes. Stay in the phase machine. |
+| "I know the phase already" | Knowing the phase ≠ following the protocol. Read state.md. |
+| "state.md is just a file" | state.md is the chain that links sessions. Lose it, lose the work. |
+| "One PR doesn't need a loop" | One PR is one AIDLC cycle. The loop closes when /ship lands. |
