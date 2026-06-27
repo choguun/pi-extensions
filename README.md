@@ -7,6 +7,13 @@ GitHub (branches + PRs + comments) as the source of truth, plus a
 **loop-engineer knowledge-base substrate** (signals, docs, domains, LOG.md)
 that compounds learnings across projects.
 
+AIDLC has been hardened by a 6-tier [superpowers fusion](#the-superpowers-fusion)
+that adopted 10 of the 12 patterns from [`obra/superpowers`](https://github.com/obra/superpowers)
+— the most rigorous "complete software development methodology for coding
+agents" available — turning AIDLC from a soft phase-machine into a
+HARD-GATE-driven workflow with TDD-as-iron-law, subagent-driven execution,
+verification gates, and anti-rationalization discipline.
+
 ## What's in here
 
 ```
@@ -17,14 +24,15 @@ pi-extensions/
 │   ├── classifier.ts                                #   PR-comment → phase + priority routing
 │   ├── substrate.ts                                 #   signals/ + LOG.md I/O
 │   ├── worktree.ts                                  #   worktree bootstrap + APFS-clone node_modules
+│   ├── plan-format.ts                               #   superpowers writing-plans format validator (single source of truth)
 │   ├── ARCHITECTURE.md                              #   the model (knowledge-base + 6-phase loop)
 │   ├── LOG.md                                       #   global activity feed (one entry per ship/ingest)
-│   ├── agents/                                      #   6 specialized agents
-│   ├── skills/                                      #  12 skills (8 phase + 4 meta)
+│   ├── agents/                                      #   8 specialized agents
+│   ├── skills/                                      #  17 skills (6 phase + 11 meta)
 │   ├── signals/, docs/, domains/                    #   knowledge-base folders
 │   ├── commands.md                                  #   standalone skill (works without TS extension)
 │   ├── package.json                                 #   deps + npm test scripts
-│   └── test/                                        #  67 tests, all passing
+│   └── test/                                        #  216 tests on main (PR #7 pending: 230)
 ├── extensions/multi-session/                       # cross-session IPC
 │   ├── index.ts                                     #   entry point (registers 3 tools + 3 commands)
 │   ├── protocol.ts                                  #   message types, identity, addressing helpers
@@ -47,8 +55,8 @@ pi-extensions/
 | Folder | Symlinked to | Purpose |
 |---|---|---|
 | `extensions/aidlc-workflow/` | `~/.pi/agent/extensions/aidlc-workflow/` | Main extension (TypeScript) |
-| `extensions/aidlc-workflow/agents/*.md` | `~/.pi/agent/agents/` | 6 specialized agents |
-| `extensions/aidlc-workflow/skills/*/SKILL.md` | `~/.pi/agent/skills/` | 12 phase + meta skills |
+| `extensions/aidlc-workflow/agents/*.md` | `~/.pi/agent/agents/` | 8 specialized agents |
+| `extensions/aidlc-workflow/skills/*/SKILL.md` | `~/.pi/agent/skills/` | 17 phase + meta skills |
 | `extensions/aidlc-workflow/commands.md` | `~/.pi/agent/skills/aidlc-commands/SKILL.md` | Standalone skill (TS-free) |
 | `extensions/multi-session/` | `~/.pi/agent/extensions/multi-session/` | Cross-session IPC extension |
 | `extensions/plan-mode/` | `~/.pi/agent/extensions/plan-mode/` | Claude Code-style plan mode |
@@ -67,29 +75,39 @@ pi-extensions/
 Each phase:
 1. Reads state from `.aidlc/state.md` (local) + the PR/branch (GitHub)
 2. Loads the phase-specific skill (`skills/specify/SKILL.md` etc.)
-3. Optionally dispatches a sub-agent to do the heavy lifting
-4. Updates state (atomic write to state.md; commits + PR comments are the GitHub half)
-5. Returns control to the user
+3. **HARD-GATEs** prevent skipping phases (added in Tier 2) — a test must
+   fail before code can be written, design must be approved before
+   implementation, etc.
+4. Optionally dispatches a fresh sub-agent per task (Tier 4) — see
+   `aidlc execute-task T-XXX`
+5. Updates state (atomic write to state.md; commits + PR comments are the GitHub half)
+6. Returns control to the user
 
-## The 7 actions on the `aidlc` tool
+## The 13 actions on the `aidlc` tool
 
-| Action | What it does |
-|---|---|
-| `status` | Read `.aidlc/state.md`, print current phase + branch + PR + next action |
-| `start` | Create a worktree + branch off the default branch + open a draft PR |
-| `classify-comments` | Route each PR comment to phase + priority (read-only) |
-| `triage` | Persist classified comments to `signals/` (deduped, frequency-counted) |
-| `next` | Print the next action for the current phase |
-| `sync` | Reconcile `.aidlc/state.md` with the actual branch/PR state |
-| `verify` | Verify-before-PR gate: typecheck + test + lint |
+| Action | What it does | Tier |
+|---|---|---|
+| `status` | Read `.aidlc/state.md`, print current phase + branch + PR + next action | 1 |
+| `start` | Create a worktree + branch off the default branch + open a draft PR | 1 |
+| `classify-comments` | Route each PR comment to phase + priority (read-only) | 1 |
+| `triage` | Persist classified comments to `signals/` (deduped, frequency-counted) | 1 |
+| `next` | Print the next action for the current phase | 1 |
+| `sync` | Reconcile `.aidlc/state.md` with the actual branch/PR state | 1 |
+| `verify` | Verify-before-PR gate: typecheck + test + lint | 1 |
+| `validate-spec` | Enforce spec format (anti-rationalization discipline) | 2 |
+| `validate-plan` | Enforce superpowers writing-plans format (single source of truth) | 2/7 |
+| `validate-tdd` | Enforce TDD-as-iron-law (test must exist + fail before implementation) | 2 |
+| `append-progress` | Append a task line to `.aidlc-progress.md` durable ledger | 3 |
+| `read-progress` | Read the `.aidlc-progress.md` ledger across sessions | 3 |
+| `execute-task` | 3-phase state machine (brief → review → finalize) for fresh-subagent-per-task | 4 |
 
 ## The 7 slash commands
 
 ```
 > /aidlc start "<feature>"   # worktree + branch + draft PR
-> /specify                   # write .aidlc/spec.md
-> /plan                      # break spec into .aidlc/plan.md tasks
-> /implement T-001           # one task at a time, TDD
+> /specify                   # write .aidlc/spec.md (HARD-GATE: validates spec format)
+> /plan                      # break spec into .aidlc/plan.md tasks (HARD-GATE: validates plan format)
+> /implement T-001           # one task at a time, TDD-as-iron-law (HARD-GATE: validates test-first)
 > /test                      # run the test suite
 > /review                    # five-axis review + read PR comments
 > /ship                      # merge the PR (verify-before-PR gated)
@@ -152,10 +170,16 @@ extensions/aidlc-workflow/
 ├── signals/             evidence: PR comments, deduped + frequency-counted
 │   ├── cache-race-condition.md     # seen in N projects, frequency: M
 │   └── ...
-├── docs/                durable knowledge: specs, decisions, learnings
+├── docs/                durable knowledge: specs, decisions, learnings, fusion audits
 │   ├── state-management.md
 │   ├── classifier-rules.md
-│   └── ...
+│   ├── superpowers-fusion-audit.md         # 6-tier fusion lineage
+│   ├── 2026-06-26-aidlc-bootstrap-design.md
+│   ├── 2026-06-26-tier-2-tdd-as-iron-law-design.md
+│   ├── 2026-06-26-tier-3-polish-bundle-f8-f9-f12-design.md
+│   ├── 2026-06-26-tier-4-fresh-subagent-per-task-design.md
+│   ├── 2026-06-26-tier-5-writing-plans-format-behavioral-evals-design.md
+│   └── plans/                                     # per-tier implementation plans
 └── domains/             one folder per project (loop)
     ├── pi-extensions/
     │   ├── README.md    charter + backlog + Timeline
@@ -170,12 +194,12 @@ one signal file. The agent's work compounds across runs.
 
 See `extensions/aidlc-workflow/ARCHITECTURE.md` for the full model.
 
-## Skills (12 total)
+## Skills (17 total)
 
 **Phase skills** (one per pipeline stage):
-- `specify` — write `.aidlc/spec.md` from a brief
-- `plan` — break spec into testable tasks
-- `implement` — one task at a time, TDD
+- `specify` — write `.aidlc/spec.md` from a brief (with HARD-GATE validation)
+- `plan` — break spec into testable tasks (with HARD-GATE validation)
+- `implement` — one task at a time, TDD-as-iron-law
 - `test` — run the test suite, fix failures
 - `review` — five-axis review + read PR comments
 - `ship` — merge the PR (verify-before-PR gated)
@@ -188,6 +212,77 @@ See `extensions/aidlc-workflow/ARCHITECTURE.md` for the full model.
 - `setup-codebase-harness` — make any repo agent-ready (legible / executable / verifiable)
 - `signal-triage` — bridge classifier → signals/ (manual or scripted)
 - `entropy-control` — periodic cleanup of stale branches/worktrees/signals
+
+**Superpowers-fusion skills** (adopted from `obra/superpowers`):
+- `test-driven-development` — TDD-as-iron-law discipline (rigid, loaded by default for any implementation)
+- `verification-before-completion` — verification gate before any completion claim
+- `systematic-debugging` — root-cause investigation (4 phases, "3+ fixes failed = question the architecture")
+- `receiving-code-review` — anti-performative-review discipline ("no 'You're absolutely right!'")
+- `finishing-a-development-branch` — 4-option finishing (merge / PR / cleanup / defer)
+- `subagent-driven-development` — fresh-subagent-per-task with brief file + two-stage review
+
+## Agents (8 total)
+
+- `implementer` — implements one task at a time using TDD + subagent-driven-development
+- `spec-writer` — drafts `.aidlc/spec.md`
+- `planner` — drafts `.aidlc/plan.md` in superpowers writing-plans format
+- `tester` — runs tests + systematic-debugging on failures
+- `reviewer` — five-axis PR review (correctness / readability / architecture / security / performance)
+- `shipper` — four-option branch finishing (merge / PR / cleanup / defer)
+- `pr-feedback-handler` — processes PR comments via signals/
+- `code-reviewer` — generalist reviewer (used by `aidlc execute-task` for two-stage review)
+
+## The superpowers fusion
+
+AIDLC was built on a soft phase-machine: the 6 phases were guidance, not
+gates. **The 6-tier superpowers fusion** hardened every phase into a
+discipline by adopting 10 of the 12 patterns from
+[`obra/superpowers`](https://github.com/obra/superpowers) — the most
+rigorous methodology for coding agents available.
+
+| Tier | PR | Fusions | What changed |
+|---|---|---|---|
+| 1 | [#2](https://github.com/choguun/pi-extensions/pull/2) | F1, F2, F3, F4 | Bootstrap extension (AIDLC-mode reminders), anti-rationalization tables, `verification-before-completion` + `systematic-debugging` skills |
+| 2 | [#3](https://github.com/choguun/pi-extensions/pull/3) | F5 | TDD-as-iron-law (`test-driven-development` skill + HARD-GATEs across 4 phases + 3 validation actions: `validate-spec` / `validate-plan` / `validate-tdd`) |
+| 3 | [#4](https://github.com/choguun/pi-extensions/pull/4) | F8, F9, F12 | `receiving-code-review` skill (anti-performative), `finishing-a-development-branch` (4-option), `.aidlc-progress.md` durable ledger (`append-progress` / `read-progress`) |
+| 4 | [#5](https://github.com/choguun/pi-extensions/pull/5) | F6 | Orchestration layer — `aidlc execute-task T-XXX` (3-phase state machine: brief → review → finalize), `subagent-driven-development` skill, `code-reviewer` agent (two-stage review) |
+| 5 | [#6](https://github.com/choguun/pi-extensions/pull/6) | F7, F11 | Full superpowers `writing-plans` format (planner rewrite + `_template.md`), self-contained drill harness + 4 behavioral scenarios (execute-task-discipline, verification-before-completion, anti-performative-review, shipper-4-options) |
+| 7 | [#7](https://github.com/choguun/pi-extensions/pull/7) | F12-polish | 7 deferred fixes (TypeBox schema for new params, `validate-plan` action wired + `plan-format.ts` module, `parseFrontmatter` strips `\|` + schema validation, `implementer.md` `tools:` list adds `aidlc`) |
+
+**Deferred:** F10 (multi-harness adapters — Claude Code / OpenCode / Codex /
+Cursor / Kimi) — no testable workflow in this repo. Will ship when there are
+cross-harness users.
+
+**Net effect:**
+- **+5 skills** adopted (test-driven-development, verification-before-completion,
+  systematic-debugging, receiving-code-review, finishing-a-development-branch,
+  subagent-driven-development) — AIDLC now exposes 17 skills total
+- **+2 agents** (code-reviewer for two-stage review, plus pr-feedback-handler
+  was added mid-fusion for signal routing)
+- **+6 aidlc tool actions** (validate-spec, validate-plan, validate-tdd,
+  append-progress, read-progress, execute-task)
+- **+1 module** (`plan-format.ts` — single source of truth for plan validation,
+  used by both the tool and the tests)
+- **+164 tests** (66 on main + 14 pending PR #7 → 230 when Tier 7 ships)
+- **+1 spec doc** per tier (5 fusion tier specs + 1 polish tier spec)
+- **0 regressions** — all pre-fusion tests still pass
+
+The novelty is that AIDLC and superpowers were independently designed
+methodologies that converged on the same problems. The fusion mapped
+superpowers' process discipline onto AIDLC's GitHub-as-state-machine,
+producing a workflow that is:
+
+1. **State-tracked** (AIDLC's `.aidlc/state.md` + PR — survives across sessions)
+2. **HARD-GATE enforced** (superpowers' iron laws — phase transitions are gated,
+   not advised)
+3. **Subagent-driven** (superpowers' fresh-subagent-per-task — each implementation
+   task gets a focused brief and a two-stage review)
+4. **Knowledge-compounding** (loop-engineer substrate — PR comments become
+   frequency-counted signals across projects)
+
+See `extensions/aidlc-workflow/docs/superpowers-fusion-audit.md` for the
+full audit (12 candidates, 10 adopted, 1 deferred) and
+`docs/2026-06-26-tier-N-...-design.md` per tier.
 
 ## Install
 
@@ -204,41 +299,61 @@ The install script:
 
 After install, **restart pi** to pick up the new extension.
 
+> **Note:** If you also have `git:github.com/obra/superpowers` in your
+> `~/.pi/agent/settings.json` `packages` array, remove it — AIDLC now ships
+> all the superpowers skills it uses as first-class adaptations, so the
+> upstream clone would conflict on skill names.
+
 ## Develop
 
 ```bash
 cd extensions/aidlc-workflow
 npm install --no-save typebox     # one-time, only test dep
-npm test                          # typecheck + 66 tests (6 files)
+npm test                          # typecheck + 216 tests on main (~1s); +14 with PR #7 merged
 ```
 
-The extension runs TypeScript directly via Node 24's
+```bash
+cd ../multi-session
+npm install --no-save typebox @earendil-works/pi-coding-agent @types/node typescript   # one-time
+npm test                         # typecheck + 62 tests, ~21s
+```
+
+The extensions run TypeScript directly via Node 24's
 `--experimental-strip-types` — no build step. Edits to `.ts` files
 are picked up on the next restart.
 
 ## Test coverage
 
-| File | Tests | What |
-|---|---|---|
-| `smoke.test.ts` | 9 | extension loads, registers tool + commands, start/status/verify/triage actions work |
-| `parser.test.ts` | 2 | state.md parser handles all 6 fields |
-| `classifier.test.ts` | 20 | PR comment classifier routes to phase + priority (incl. review-bot digests) |
-| `branch.test.ts` | 5 | `detectDefaultBranch` handles main/master/trunk/develop/gh-pages |
-| `substrate.test.ts` | 18 | signal I/O, dedup, priority upgrade-only, LOG.md append |
-| `worktree.test.ts` | 11 | `shellQuote` safety (injection vectors), worktree bootstrap, env carryover |
+**AIDLC** (`extensions/aidlc-workflow/test/`) covers: extension lifecycle
+(`smoke`), state parser, PR-comment classifier, branch detection, signal
+substrate, worktree bootstrap + `shellQuote` injection safety, skill
+symlinks, progress ledger (Tier 3), `execute-task` 3-phase machine (Tier 4),
+aidlc action validation + TypeBox schema, superpowers writing-plans format
+validation, behavioral drill harness + 4 scenarios (Tier 5), and the
+Tier 7 polish tests.
 
-Total: **66 tests, 0 failures, typecheck clean**.
+| Suite | On main | With [PR #7](https://github.com/choguun/pi-extensions/pull/7) merged |
+|---|---|---|
+| AIDLC | **216** | **230** (+14 across the polish suites) |
+| multi-session | 62 | 62 |
+| plan-mode | 65 | 65 |
+| **Total** | **343** | **357** |
+
+Run `cd extensions/<name> && npm test` for the live count on your checkout.
 
 ## State
 
 - **Local**: `.aidlc/state.md` in the project root
 - **Remote**: branch + PR (title, description, comments) on GitHub
 - **Specs/plans**: `.aidlc/spec.md`, `.aidlc/plan.md` in the project root
+- **Progress ledger**: `.aidlc-progress.md` in the project root (durable across sessions)
 
 ## Source
 
 Inspired by:
-- [AWS Labs AI-DLC Workflows](https://github.com/awslabs/aidlc-workflows) — the canonical spec
+- [obra/superpowers](https://github.com/obra/superpowers) — the methodology
+  behind the 6-tier fusion (10 of 12 patterns adopted)
+- [AWS Labs AI-DLC Workflows](https://github.com/awslabs/aidlc-workflows) — the canonical AIDLC spec
 - [`choguun/agent-skills`](https://github.com/choguun/agent-skills) — 23 AIDLC skills
 - [`jasonzhou1993/loop-engineer-template`](https://github.com/jasonzhou1993/loop-engineer-template) — the knowledge-base substrate (signals/docs/domains/LOG.md), worktree discipline, `new-loop` + `setup-codebase-harness` skills
 - The [pi extension example](https://github.com/earendil-works/pi-coding-agent/tree/main/examples/extensions) — the API
