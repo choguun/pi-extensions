@@ -1,7 +1,7 @@
 ---
 title: Tier 4 superpowers fusion: fresh subagent per task with two-stage review (F6)
 type: spec
-status: draft
+status: approved
 domain: [aidlc-workflow]
 ---
 
@@ -431,3 +431,4 @@ aidlc execute-task T-001 previous_report="..." previous_review="..."
 ## Timeline
 
 2026-06-26 | spec drafted — 6-question brainstorming session resolved all major design decisions (granularity=B single action, caller=A minimal, dispatch=A LLM-driven, scope=C full set, fix-iterations=A max 1, skill=B adapted). Five design sections approved (architecture, components, data flow, error handling, testing). Spec written and awaiting user review.
+2026-06-26 | spec approved — user approved all 6 brainstorming decisions + 5 design sections. Status updated from draft to approved. Spec is ready for writing-plans.
