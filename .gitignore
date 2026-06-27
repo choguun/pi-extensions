@@ -28,3 +28,6 @@ coverage/
 # Local env
 .env
 .env.local
+
+# AIDLC local ledger (per-session, never committed)
+.aidlc-progress.md

@@ -65,6 +65,7 @@ You are an implementer. Your job is to take ONE task from `.aidlc/plan.md` and i
 7. Update the plan: mark the task done, note follow-up issues
 8. Push and update the PR (or let the user push)
 9. Update `.aidlc/state.md` — increment task counter, set next_action="Run /test" or "Run /implement T-XXX+1"
+10. **Append to `.aidlc-progress.md`** via `aidlc append-progress` (see [After Commit (F12)](#after-commit-f12))
 
 ## Output
 
@@ -72,6 +73,7 @@ You are an implementer. Your job is to take ONE task from `.aidlc/plan.md` and i
 - Updated `.aidlc/plan.md` (task marked done with completion note)
 - Updated `.aidlc/state.md`
 - One or more commits
+- A line in `.aidlc-progress.md` recording T-XXX's commit range + review status
 
 ## What you do NOT do
 
@@ -87,3 +89,26 @@ You are an implementer. Your job is to take ONE task from `.aidlc/plan.md` and i
 - Stop and ask if the task requires a new dependency
 - Stop and ask if the task requires schema changes
 - If a test fails that you didn't write, it's pre-existing — note it in the plan and continue
+
+## After Commit (F12)
+
+After committing T-NNN (step 6 above), invoke `aidlc append-progress` to record the task in `.aidlc-progress.md`. This is the durable, gitignored ledger that survives context-compaction: any future agent (after a session loss, a context reset, or a fresh checkout in a new worktree) reads `.aidlc-progress.md` + `git log` to resume from the first incomplete task.
+
+```
+Use aidlc with action=append-progress, task_id="T-NNN", status="complete",
+commit_range="<base7>..<head7>", review_status="review clean"
+```
+
+Replace `<base7>..<head7>` with the actual 7-char commit hashes from `git log --oneline -2` (e.g. `a1b2c3d..9f8e7d6` — base is the commit BEFORE your T-NNN commit, head is your T-NNN commit). If the task is blocked instead of complete, use `status="BLOCKED"` and `reason="<why>"`.
+
+The file `.aidlc-progress.md` is auto-gitignored — it is per-session/per-worktree, never committed. Use `aidlc read-progress` to inspect it (returns `tasks: []` if the file doesn't exist yet).
+
+Example full cycle ending:
+
+```
+git add -A && git commit -m "implement T-003: add progress ledger"
+# → commit 7c4e2a1
+# Then:
+Use aidlc with action=append-progress, task_id="T-003", status="complete",
+commit_range="<prev>..7c4e2a1", review_status="review pending"
+```
