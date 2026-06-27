@@ -1,7 +1,7 @@
 ---
 name: implementer
 description: Dispatches a fresh implementer subagent per T-XXX task via the execute-task action. Use when the current AIDLC phase=implementing and a T-XXX task is next. The implementer no longer works inline — it orchestrates the two-stage review protocol.
-tools: read, write, edit, bash, grep, find
+tools: read, write, edit, bash, grep, find, aidlc
 model: MiniMax-M3
 ---
 

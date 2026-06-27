@@ -32,6 +32,7 @@ import {
 	appendProgressForTask,
 } from "./execute-task.ts";
 import bootstrapExtension from "./bootstrap.ts";
+import { validatePlanFormat } from "./plan-format.ts";
 
 const AIDLC_DIR = ".aidlc";
 const STATE_FILE = ".aidlc/state.md";
@@ -335,7 +336,11 @@ const AidlcParams = Type.Object({
 			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress, execute-task",
 	}),
 	feature: Type.Optional(Type.String({ description: "Feature name (for 'start')" })),
-	task_id: Type.Optional(Type.String({ description: "Task ID like T-001 (for 'execute-task')" })),
+	task_id: Type.Optional(Type.String({ description: "Task ID like T-001 (for 'execute-task', 'append-progress')" })),
+	status: Type.Optional(Type.String({ description: "Task status (for 'append-progress') — e.g. complete, BLOCKED" })),
+	commit_range: Type.Optional(Type.String({ description: "Commit range (for 'append-progress') — e.g. abc1234..def5678" })),
+	review_status: Type.Optional(Type.String({ description: "Review status (for 'append-progress') — e.g. clean, needs_fix" })),
+	reason: Type.Optional(Type.String({ description: "Reason string (for 'append-progress' with status=BLOCKED)" })),
 	previous_report: Type.Optional(Type.String({ description: "Inline report content (for 'execute-task' — skip writing to disk)" })),
 	previous_review: Type.Optional(Type.String({ description: "Inline review content (for 'execute-task' — skip writing to disk)" })),
 });
@@ -882,18 +887,18 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			if (action === "validate-plan") {
-				// Enforce that every `### T-NNN` task in `.aidlc/plan.md`
-				// either references at least one `ST-NNN` scenario or is
-				// explicitly marked as `(non-test refactor)`. This is the
-				// planner's contract — every implementation task must be
-				// traceable back to a testable acceptance criterion. Pure
-				// refactors (rename, restructure) are exempt via the
-				// marker so they don't have to fabricate an ST link.
+				// F12.2 polish — wire `validatePlanFormat()` (from
+				// `plan-format.ts`) into this action. The previous
+				// implementation duplicated a custom ST-NNN check that
+				// was over-strict (required every T-NNN to reference an
+				// ST-NNN scenario) and never reached the canonical
+				// format validator that F7.1 unit-tested. The format
+				// check (Goal/Architecture/Tech Stack + Files/Steps per
+				// task + scenarioCount) is now the single source of
+				// truth. See `plan-format.ts` for the rules.
 				const planPath = path.join(cwd, AIDLC_DIR, "plan.md");
-				const errors: string[] = [];
 
 				if (!exists(planPath)) {
-					errors.push("plan.md not found in .aidlc/");
 					return {
 						content: [
 							{
@@ -901,84 +906,31 @@ export default function (pi: ExtensionAPI) {
 								text: [
 									`**validate-plan**`,
 									``,
-									`- ✖ ${errors[0]}`,
+									`- ✖ .aidlc/plan.md not found`,
 									``,
 									`Run \`/plan\` to write the plan first.`,
 								].join("\n"),
 							},
 						],
-						details: { valid: false, errors, taskCount: 0, offendingTasks: [] },
+						details: { valid: false, errors: [".aidlc/plan.md not found"], scenarioCount: 0 },
 					};
 				}
 
-				const content = readFile(planPath) ?? "";
-
-				// Find every `### T-NNN:` task heading and the body that
-				// belongs to it (everything until the next `### T-NNN:` or
-				// end of file). For each, decide if it has at least one
-				// ST-NNN reference OR a (non-test refactor) marker.
-				//
-				// Line-based parsing is more robust than a single
-				// multiline regex with lazy quantifiers — the regex
-				// variant (originally tried) failed to advance past the
-				// first task because the lookahead consumed `\n` boundary
-				// chars in a way that confused `lastIndex`. Splitting by
-				// lines and walking heading positions is straightforward
-				// and easy to debug.
-				const planLines = content.split("\n");
-				const taskIndices: Array<{ line: number; id: string }> = [];
-				for (let i = 0; i < planLines.length; i++) {
-					const m = planLines[i].match(/^### (T-\d+):/);
-					if (m) taskIndices.push({ line: i, id: m[1] });
-				}
-				const tasks: Array<{ id: string; body: string; ok: boolean; reason?: string }> = [];
-				for (let k = 0; k < taskIndices.length; k++) {
-					// Include the heading line itself in `body` so markers
-					// like `(non-test refactor)` placed in the heading
-					// (the common style — `### T-001: rename foo (non-test refactor)`)
-					// are detected.
-					const start = taskIndices[k].line;
-					const end = k + 1 < taskIndices.length ? taskIndices[k + 1].line : planLines.length;
-					const body = planLines.slice(start, end).join("\n");
-					const hasStRef = /\bST-\d+\b/.test(body);
-					const isRefactor = /\(non-test refactor\)/i.test(body);
-					if (hasStRef || isRefactor) {
-						tasks.push({ id: taskIndices[k].id, body, ok: true });
-					} else {
-						tasks.push({
-							id: taskIndices[k].id,
-							body,
-							ok: false,
-							reason: `${taskIndices[k].id} references no ST-NNN scenario and has no \`(non-test refactor)\` marker`,
-						});
-					}
-				}
-
-				const offending = tasks.filter((t) => !t.ok);
-				for (const t of offending) {
-					if (t.reason) errors.push(t.reason);
-				}
-
-				const valid = errors.length === 0;
+				const planContent = readFile(planPath) ?? "";
+				const result = validatePlanFormat(planContent);
 				const lines: string[] = [
 					`**validate-plan**`,
 					``,
-					valid
-						? `- ✔ ${tasks.length} task(s) all reference ST-NNN scenarios (or are marked non-test refactor)`
-						: `- ✖ ${offending.length}/${tasks.length} task(s) missing ST-NNN reference:`,
+					result.valid
+						? `- ✔ Plan format valid (${result.scenarioCount} ST-NNN scenario ref(s))`
+						: `- ✖ ${result.errors.length} format issue(s):`,
 				];
-				if (!valid) {
-					for (const e of errors) lines.push(`  - ${e}`);
+				if (!result.valid) {
+					for (const e of result.errors) lines.push(`  - ${e}`);
 				}
-
 				return {
 					content: [{ type: "text", text: lines.join("\n") }],
-					details: {
-						valid,
-						errors,
-						taskCount: tasks.length,
-						offendingTasks: offending.map((t) => t.id),
-					},
+					details: result,
 				};
 			}
 
@@ -1127,11 +1079,11 @@ export default function (pi: ExtensionAPI) {
 				// POSIX); the file is created on first use. Requires
 				// `.aidlc/` to exist so we never silently start a
 				// ledger in a non-AIDLC repo.
-				const taskId = (params as Record<string, unknown>).task_id as string | undefined;
-				const status = (params as Record<string, unknown>).status as string | undefined;
-				const commitRange = (params as Record<string, unknown>).commit_range as string | undefined;
-				const reviewStatus = (params as Record<string, unknown>).review_status as string | undefined;
-				const reason = (params as Record<string, unknown>).reason as string | undefined;
+				const taskId = params.task_id;
+				const status = params.status;
+				const commitRange = params.commit_range;
+				const reviewStatus = params.review_status;
+				const reason = params.reason;
 
 				const taskIdTrim = taskId?.trim();
 				const statusTrim = status?.trim();
@@ -1399,7 +1351,7 @@ export default function (pi: ExtensionAPI) {
 				content: [
 					{
 						type: "text",
-						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress, execute-task`,
+						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress, execute-task`,
 					},
 				],
 				isError: true,
