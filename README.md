@@ -304,6 +304,34 @@ After install, **restart pi** to pick up the new extension.
 > all the superpowers skills it uses as first-class adaptations, so the
 > upstream clone would conflict on skill names.
 
+### Local artifacts in repos where you run AIDLC
+
+AIDLC (and plan-mode, and superpowers) create per-session local
+artifacts when you run them in a repo: `.aidlc/`, `.aidlc-progress.md`,
+`.plan.md`, `.superpowers/`, etc. These should NEVER appear in the
+repo's `.gitignore` (which ships with every PR and would impose
+AIDLC's convention on every contributor). Instead, add them to the
+repo's local-only `.git/info/exclude`:
+
+```bash
+EXCLUDE="$(git rev-parse --git-path info/exclude)"
+mkdir -p "$(dirname "$EXCLUDE")"
+cat >> "$EXCLUDE" <<'EOF'
+# AIDLC + plan-mode + superpowers local artifacts (per-session, never committed)
+.aidlc/
+.aidlc-progress.md
+.plan.md
+.plan-mode-review.md
+.superpowers/
+.opencode/
+EOF
+```
+
+Same syntax as `.gitignore`, but `.git/info/exclude` is git's own
+data file — never tracked, never shipped, applies only to your clone.
+See `AGENTS.md` "Local artifacts (not committed)" for the full
+rationale.
+
 ## Develop
 
 ```bash
