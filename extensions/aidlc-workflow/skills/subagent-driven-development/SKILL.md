@@ -69,12 +69,12 @@ digraph process {
         "BLOCKED (aidlc writes BLOCKED to .aidlc-progress.md)" [shape=box style=filled fillcolor=lightcoral];
     }
 
-    "Read plan, note context and global constraints, create todos" [shape=box];
+    "Read .aidlc/plan.md, note global constraints, create todos" [shape=box];
     "More tasks remain?" [shape=diamond];
-    "Dispatch final code reviewer subagent (../requesting-code-review/code-reviewer.md)" [shape=box];
-    "Use superpowers:finishing-a-development-branch" [shape=box style=filled fillcolor=lightgreen];
+    "Dispatch reviewer via subagent tool with agent='code-reviewer'" [shape=box];
+    "Use aidlc execute-task per task; final review uses agents/reviewer.md" [shape=box style=filled fillcolor=lightgreen];
 
-    "Read plan, note context and global constraints, create todos" -> "Call aidlc execute-task T-NNN";
+    "Read .aidlc/plan.md, note global constraints, create todos" -> "Call aidlc execute-task T-NNN";
     "Call aidlc execute-task T-NNN" -> "Phase A: implementer brief ready";
     "Phase A: implementer brief ready" -> "LLM dispatches implementer subagent via dispatch_hint";
     "LLM dispatches implementer subagent via dispatch_hint" -> "Implementer subagent asks questions?";
@@ -95,8 +95,8 @@ digraph process {
     "needs_fix + fix exists" -> "Call aidlc execute-task T-NNN previous_report=... previous_review=..." [label="no — re-review"];
     "complete (aidlc appends to .aidlc-progress.md)" -> "More tasks remain?";
     "More tasks remain?" -> "Call aidlc execute-task T-NNN" [label="yes"];
-    "More tasks remain?" -> "Dispatch final code reviewer subagent (../requesting-code-review/code-reviewer.md)" [label="no"];
-    "Dispatch final code reviewer subagent (../requesting-code-review/code-reviewer.md)" -> "Use superpowers:finishing-a-development-branch";
+    "More tasks remain?" -> "Dispatch reviewer via subagent tool with agent='code-reviewer'" [label="no"];
+    "Dispatch reviewer via subagent tool with agent='code-reviewer'" -> "Use aidlc execute-task per task; final review uses agents/reviewer.md";
 }
 ```
 
@@ -153,7 +153,7 @@ that implementer. Single-file mechanical fixes also take the cheapest tier.
 
 Implementer subagents report one of four statuses. Handle each appropriately:
 
-**DONE:** Generate the review package (`scripts/review-package BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
+**DONE:** Re-invoke `aidlc execute-task T-NNN previous_report=<report_path>` (the action uses file-based state in `.aidlc/sdd/`). The action advances to Phase B, writes a reviewer brief at `.aidlc/sdd/T-NNN-reviewer-brief.md`, and returns a `dispatch_hint` with the brief path + review target. Dispatch the task reviewer subagent using that hint — do not generate a separate diff-package script.
 
 **DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
 
@@ -198,14 +198,12 @@ final whole-branch review. When you fill a reviewer template:
   Y"). The reviewer's template already carries the process rules (YAGNI,
   test hygiene, review method) — the constraints block is for what THIS
   project's spec demands.
-- Hand the reviewer its diff as a file: run this skill's
-  `scripts/review-package BASE HEAD` and pass the reviewer the file path
-  it prints (or, without bash: `git log --oneline`, `git diff --stat`,
-  and `git diff -U10` for the range, redirected to one uniquely named
-  file). The output never enters your own context, and the reviewer sees
-  the commit list, stat summary, and full diff with context in one Read
-  call. Use the BASE you recorded before dispatching the implementer —
-  never `HEAD~1`, which silently truncates multi-commit tasks.
+- Hand the reviewer the implementer's report as the diff evidence. The
+  reviewer reads `report_path` (returned by `aidlc execute-task`) plus the
+  brief and writes the verdict to `review_path`. AIDLC's `getCommitRangeForTask`
+  records the commit range automatically when the task is approved (via
+  `git log --grep=<taskId>`); the controller does not record a BASE
+  manually, and there is no `HEAD~1` footgun in this model.
 - A dispatch prompt describes one task, not the session's history. Do not
   paste accumulated prior-task summaries ("state after Tasks 1-3") into
   later dispatches — a real session's dispatch hit 42k chars of which 99%
@@ -220,11 +218,13 @@ final whole-branch review. When you fill a reviewer template:
   contradiction: present the finding and the plan text, ask which governs.
   Do not dismiss the finding because the plan mandates it, and do not
   dispatch a fix that contradicts the plan without asking.
-- The final whole-branch review gets a package too: run
-  `scripts/review-package MERGE_BASE HEAD` (MERGE_BASE = the commit the
-  branch started from, e.g. `git merge-base main HEAD`) and include the
-  printed path in the final review dispatch, so the final reviewer reads
-  one file instead of re-deriving the branch diff with git commands.
+- The final whole-branch review is NOT routed through `aidlc execute-task`
+  (it is not a single-task review). Dispatch the reviewer subagent directly
+  via the subagent tool with `agent='code-reviewer'` and pass
+  `git diff MERGE_BASE..HEAD` (where MERGE_BASE = `git merge-base main HEAD`)
+  as the input. The reviewer reads the diff + the plan + the per-task reports
+  and writes a verdict to a file the LLM picks (typically
+  `.aidlc/sdd/final-review.md`).
 - Every fix dispatch carries the implementer contract: the fix subagent
   re-runs the tests covering its change and reports the results. Name the
   covering test files in the dispatch — a one-line fix does not need the
@@ -247,8 +247,7 @@ and is re-read on every later turn. Hand artifacts over as files:
 - **Reviewer inputs:** the task reviewer gets three paths from the second `aidlc execute-task T-NNN previous_report=<report_path>` call — `brief_path` (the original task brief), `report_path` (the implementer's output), and `review_path` (where the reviewer writes its verdict, typically `.aidlc/sdd/T-NNN-review.md`). All three are printed by the action; the LLM passes them into the reviewer subagent's dispatch.
 - **Fix dispatches:** when the review comes back `needs_fix`, re-invoke `aidlc execute-task T-NNN previous_report=<report_path> previous_review=<review_path>`. The action determines that verdict=needs_fix and returns a `fix_brief_path` (typically `.aidlc/sdd/T-NNN-fix-brief.md`) plus a new `report_path` for the fix output. The fixer subagent writes to that report path. After the fix, re-invoke once more with the updated report and the original review to advance to the re-review phase.
 
-Use the BASE you recorded before dispatching the implementer — never
-`HEAD~1`, which silently truncates multi-commit tasks.
+The commit range for a task is recovered automatically by `getCommitRangeForTask` (`execute-task.ts`) via `git log --grep=<taskId>` — the controller does not record a BASE manually, and there is no `HEAD~1` truncation footgun in AIDLC's model.
 
 ## Durable Progress
 
@@ -278,23 +277,59 @@ a ledger file, not only in todos.
   lives outside `extensions/`, at the worktree root); if that happens,
   recover from `git log`.
 
-## Prompt Templates
+## Prompt Templates (AIDLC `dispatch_hint` flow)
 
-- [implementer-prompt.md](implementer-prompt.md) - Dispatch implementer subagent
-- [task-reviewer-prompt.md](task-reviewer-prompt.md) - Dispatch task reviewer subagent (spec compliance + code quality)
-- Final whole-branch review: use superpowers:requesting-code-review's [code-reviewer.md](../requesting-code-review/code-reviewer.md)
+AIDLC does not ship local prompt-template files. The `aidlc execute-task`
+action generates a `dispatch_hint` for each phase — that hint is the
+controller's prompt. The controller passes the hint to the subagent tool
+verbatim, with `agent=` set to the role for that phase.
+
+**Implementer dispatch (Phase A or Phase C fix):**
+```
+Use the subagent tool with agent="implementer" and task="Read the brief
+at <brief_path> and follow it. Write your report to <report_path>."
+```
+The `<brief_path>` is `.aidlc/sdd/T-NNN-brief.md` (Phase A) or
+`.aidlc/sdd/T-NNN-fix-brief.md` (Phase C fix). The report path is
+`.aidlc/sdd/T-NNN-report.md` (Phase A) or `.aidlc/sdd/T-NNN-fix-report.md`
+(Phase C). The `dispatch_hint` returned by `aidlc execute-task` contains
+the exact strings — do not reconstruct them by hand.
+
+**Reviewer dispatch (Phase B or final whole-branch review):**
+```
+Use the subagent tool with agent="code-reviewer" and task="Read the
+reviewer brief at <reviewer_brief_path> and write your verdict to
+<review_path>."
+```
+The reviewer reads the brief + the implementer's report + the diff via the
+paths in the brief and writes the verdict file starting with `## Verdict`
+heading (`approved` | `needs_fix` | `blocked`).
+
+**Final whole-branch review:** dispatch directly (NOT through
+`aidlc execute-task`) with `agent='code-reviewer'` and pass
+`git diff MERGE_BASE..HEAD` as the input. The reviewer reads the diff +
+the plan + the per-task reports in `.aidlc/sdd/` and writes a verdict.
+
+**Implementer / reviewer agents:** the agent definitions live in
+`extensions/aidlc-workflow/agents/implementer.md` and
+`extensions/aidlc-workflow/agents/reviewer.md`. Both agents load
+companion skills (`implement`, `test-driven-development`,
+`verification-before-completion`, `systematic-debugging`,
+`review`) — these are referenced from the agents' `description` frontmatter
+and the dispatch hint should not duplicate them.
 
 ## Example Workflow
 
 ```
 You: I'm using Subagent-Driven Development to execute this plan.
 
-[Read plan file once: docs/superpowers/plans/feature-plan.md]
+[Read plan file once: .aidlc/plan.md]
 [Create todos for all tasks]
 
 Task 1: Hook installation script
 
-[Run task-brief for Task 1; dispatch implementer with brief + report paths + context]
+[Call aidlc execute-task T-001 → returns dispatch_hint with brief_path=.aidlc/sdd/T-001-brief.md]
+[Dispatch implementer subagent with the dispatch_hint]
 
 Implementer: "Before I begin - should the hook be installed at user or system level?"
 
@@ -307,15 +342,20 @@ Implementer: "Got it. Implementing now..."
   - Self-review: Found I missed --force flag, added it
   - Committed
 
-[Run review-package, dispatch task reviewer with the printed path]
-Task reviewer: Spec ✅ - all requirements met, nothing extra.
-  Strengths: Good test coverage, clean. Issues: None. Task quality: Approved.
+[Call aidlc execute-task T-001 previous_report=... → returns dispatch_hint for reviewer]
+[Dispatch reviewer subagent with the dispatch_hint]
+Task reviewer (writes to .aidlc/sdd/T-001-review.md):
+  - ## Verdict
+    approved
+  - Spec ✅ - all requirements met, nothing extra.
+  - Strengths: Good test coverage, clean. Issues: None. Task quality: Approved.
 
-[Mark Task 1 complete]
+[Call aidlc execute-task T-001 previous_report=... previous_review=... → phase=complete]
+[aidlc appends to .aidlc-progress.md: T-001 complete (commits ..hash.., review clean)]
 
 Task 2: Recovery modes
 
-[Run task-brief for Task 2; dispatch implementer with brief + report paths + context]
+[Call aidlc execute-task T-002 → dispatch implementer]
 
 Implementer: [No questions, proceeds]
 Implementer:
@@ -324,26 +364,33 @@ Implementer:
   - Self-review: All good
   - Committed
 
-[Run review-package, dispatch task reviewer with the printed path]
-Task reviewer: Spec ❌:
-  - Missing: Progress reporting (spec says "report every 100 items")
-  - Extra: Added --json flag (not requested)
-  Issues (Important): Magic number (100)
+[Call aidlc execute-task T-002 previous_report=... → dispatch reviewer]
+Task reviewer (writes to .aidlc/sdd/T-002-review.md):
+  - ## Verdict
+    needs_fix
+  - Spec ❌:
+    - Missing: Progress reporting (spec says "report every 100 items")
+    - Extra: Added --json flag (not requested)
+  - Issues (Important): Magic number (100)
 
-[Dispatch fix subagent with all findings]
+[Call aidlc execute-task T-002 previous_report=... previous_review=...
+ → phase=fix, dispatch_hint has fix_brief_path]
+[Dispatch implementer for fix with all findings]
+
 Fixer: Removed --json flag, added progress reporting, extracted PROGRESS_INTERVAL constant
 
 [Task reviewer reviews again]
-Task reviewer: Spec ✅. Task quality: Approved.
+Task reviewer: ## Verdict approved. Task quality: Approved.
 
-[Mark Task 2 complete]
+[Call aidlc execute-task T-002 previous_report=... previous_review=... → phase=complete]
 
 ...
 
 [After all tasks]
-[Dispatch final code-reviewer]
+[Dispatch reviewer with agent='code-reviewer' and git diff MERGE_BASE..HEAD as input]
 Final reviewer: All requirements met, ready to merge
 
+[Use aidlc:ship]
 Done!
 ```
 
@@ -386,8 +433,8 @@ Done!
 - Skip task review, or accept a report missing either verdict (spec compliance AND task quality are both required)
 - Proceed with unfixed issues
 - Dispatch multiple implementation subagents in parallel (conflicts)
-- Make a subagent read the whole plan file (hand it its task brief —
-  `scripts/task-brief` — instead)
+- Make a subagent read the whole plan file (hand it its task brief from
+  `.aidlc/sdd/T-NNN-brief.md` instead — the brief is the single source of requirements)
 - Skip scene-setting context (subagent needs to understand where task fits)
 - Ignore subagent questions (answer before letting them proceed)
 - Accept "close enough" on spec compliance (reviewer found spec issues = not done)
@@ -396,9 +443,8 @@ Done!
 - Tell a reviewer what not to flag, or pre-rate a finding's severity in the
   dispatch prompt ("treat it as Minor at most") — the plan's example code is
   a starting point, not evidence that its weaknesses were chosen
-- Dispatch a task reviewer without a diff file — generate it first
-  (`scripts/review-package BASE HEAD`) and name the printed path in the
-  prompt
+- Dispatch a task reviewer without an implementer report — the action needs
+  the report on disk (or as `previous_report`) to write the reviewer brief
 - Move to next task while the review has open Critical/Important issues
 - Re-dispatch a task the progress ledger already marks complete — check
   the ledger (and `git log`) after any compaction or resume
@@ -420,17 +466,24 @@ Done!
 
 ## Integration
 
-**Required workflow skills:**
-- **superpowers:using-git-worktrees** - Ensures isolated workspace (creates one or verifies existing)
-- **superpowers:writing-plans** - Creates the plan this skill executes
-- **superpowers:requesting-code-review** - Code review template for the final whole-branch review
-- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+**Required workflow skills (AIDLC equivalents):**
+- **aidlc-workflow** (`extensions/aidlc-workflow/skills/aidlc-workflow/SKILL.md`) — orchestrator; the slash commands that drive each phase (`/specify`, `/plan`, `/implement`, `/test`, `/review`, `/ship`)
+- **plan** (`extensions/aidlc-workflow/skills/plan/SKILL.md`) — produces `.aidlc/plan.md` that this skill executes
+- **implement** (`extensions/aidlc-workflow/skills/implement/SKILL.md`) — the per-task workflow each implementer subagent follows
+- **review** (`extensions/aidlc-workflow/skills/review/SKILL.md`) — the five-axis review rubric used by the final whole-branch review
+- **ship** (`extensions/aidlc-workflow/skills/ship/SKILL.md`) — final integration step after all tasks are complete (replaces `superpowers:finishing-a-development-branch`)
+- **worktree-aware orchestration** (`extensions/aidlc-workflow/worktree.ts`) — AIDLC's git-worktree model; tier-4 spec/plan is worktree-aware
 
-**Subagents should use:**
-- **superpowers:test-driven-development** - Subagents follow TDD for each task
+**Subagents should use (AIDLC skills, loaded by agent definitions):**
+- **test-driven-development** (`extensions/aidlc-workflow/skills/test-driven-development/SKILL.md`) — TDD discipline (replaces `superpowers:test-driven-development`)
+- **verification-before-completion** (`extensions/aidlc-workflow/skills/verification-before-completion/SKILL.md`) — gates all completion claims
+- **systematic-debugging** (`extensions/aidlc-workflow/skills/systematic-debugging/SKILL.md`) — invoked before any fix when a bug is found
+- **implementer agent** (`extensions/aidlc-workflow/agents/implementer.md`) — the implementer subagent definition
+- **reviewer agent** (`extensions/aidlc-workflow/agents/reviewer.md`) — the reviewer subagent definition
 
-**Alternative workflow:**
-- **superpowers:executing-plans** - Use for parallel session instead of same-session execution
+**Optional / cross-model skills (may also be installed):**
+- **receiving-code-review** (`extensions/aidlc-workflow/skills/receiving-code-review/SKILL.md`) — for responding to PR review feedback after the branch review
+- **executing-plans** (superpowers skill, parallel session variant) — use this skill instead when the work needs a parallel session rather than same-session execution
 
 ## AIDLC-Specific Notes
 
