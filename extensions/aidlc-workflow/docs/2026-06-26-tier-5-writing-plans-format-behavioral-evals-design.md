@@ -386,3 +386,7 @@ npm run evals
 
 2026-06-26 | spec drafted — 6-question brainstorming session resolved all major design decisions (F7=A full format, F11:B 4 scenarios, F11.1:B self-contained drill, commits:B 4 commits, scenarios:A YAML+markdown, F7+planner:A+D forward-only+rewrite). Five design sections approved (architecture, components, data flow, error handling, testing). Spec written and awaiting user review.
 2026-06-26 | spec approved — user approved all 6 brainstorming decisions + 5 design sections. Status updated from draft to approved. Spec is ready for writing-plans.
+
+## Timeline (continued)
+
+2026-06-26 | F7 + F11 shipped — planner.md rewritten for full superpowers writing-plans format (95 lines with workflow sections) + skills/plan + skills/specify updated + docs/plans/_template.md shipped + drill harness (test/evals/harness.ts) + 4 drill scenarios. 18 new tests (10 plan format + 8 harness). Total: 216 tests passing. 8 commits on feature branch (4 implementation + 4 fixes). Review findings caught: F7.1.1 missing workflow sections; F11.1.2 regex needed negative lookbehind for "not compliant" (TDD caught this).
