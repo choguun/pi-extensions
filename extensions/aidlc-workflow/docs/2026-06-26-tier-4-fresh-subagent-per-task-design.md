@@ -432,3 +432,7 @@ aidlc execute-task T-001 previous_report="..." previous_review="..."
 
 2026-06-26 | spec drafted — 6-question brainstorming session resolved all major design decisions (granularity=B single action, caller=A minimal, dispatch=A LLM-driven, scope=C full set, fix-iterations=A max 1, skill=B adapted). Five design sections approved (architecture, components, data flow, error handling, testing). Spec written and awaiting user review.
 2026-06-26 | spec approved — user approved all 6 brainstorming decisions + 5 design sections. Status updated from draft to approved. Spec is ready for writing-plans.
+
+## Timeline (continued)
+
+2026-06-26 | F6 shipped — execute-task action (3-phase state machine, max 1 fix iteration) + subagent-driven-development skill (adapted for AIDLC, 445 lines) + 3 agent updates (implementer.md rewrite, spec-writer.md + planner.md references). 22 new helper tests; implementer caught + fixed regex m-flag bug via TDD. F5 implementer TDD tests swapped for F6 execute-task tests. Total: 198 tests passing. 7 commits on feature branch (4 implementation + 3 fixes). 3 review findings caught: code-reviewer typo (DEFERRED — reviewer's claim was incorrect, kept code-reviewer), shellQuote compliance, ~15 superpowers-specific references in skill (all adapted).
