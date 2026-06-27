@@ -153,26 +153,28 @@ test("implement/SKILL.md references systematic-debugging", () => {
   assert.match(content, /systematic-debugging/);
 });
 
-// ---- F5: TDD-as-iron-law (implementer agent) ----
+// ---- F6: execute-task orchestrator (implementer agent) ----
+//
+// F6 redefines the implementer agent as an orchestrator that delegates
+// each T-XXX task to a fresh subagent via `aidlc execute-task`. The
+// TDD-as-iron-law content moved to the test-driven-development skill
+// (tested in skills-tdd.test.ts). The tests below lock in the new
+// orchestrator contract: HARD-GATE, Workflow section, Reference
+// section, and the dispatch-skill cross-links.
 
-test("implementer.md contains iron law", () => {
+test("implementer.md contains HARD-GATE block", () => {
   const content = readSkill(join(ROOT, "agents/implementer.md"));
-  assert.match(content, /NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST/);
+  assert.match(content, /<HARD-GATE>[\s\S]*aidlc execute-task[\s\S]*<\/HARD-GATE>/);
 });
 
-test("implementer.md contains Hard Rules section", () => {
+test("implementer.md contains Workflow section", () => {
   const content = readSkill(join(ROOT, "agents/implementer.md"));
-  assert.match(content, /## Hard Rules/);
+  assert.match(content, /## Workflow/);
 });
 
-test("implementer.md contains Red-Green-Refactor section", () => {
+test("implementer.md contains Reference section", () => {
   const content = readSkill(join(ROOT, "agents/implementer.md"));
-  assert.match(content, /## Red-Green-Refactor/);
-});
-
-test("implementer.md contains Common Rationalizations section", () => {
-  const content = readSkill(join(ROOT, "agents/implementer.md"));
-  assert.match(content, /## Common Rationalizations/);
+  assert.match(content, /## Reference/);
 });
 
 test("implementer.md references test-driven-development skill", () => {
@@ -180,18 +182,23 @@ test("implementer.md references test-driven-development skill", () => {
   assert.match(content, /test-driven-development/);
 });
 
-test("implementer.md iron law appears before the body sections", () => {
+test("implementer.md references subagent-driven-development skill", () => {
   const content = readSkill(join(ROOT, "agents/implementer.md"));
-  const ironLawIdx = content.indexOf("NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST");
-  const whatYouDoIdx = content.indexOf("## What you do");
-  assert.ok(ironLawIdx >= 0, "iron law text missing");
-  assert.ok(whatYouDoIdx >= 0, "## What you do section missing");
-  assert.ok(ironLawIdx < whatYouDoIdx, "iron law must appear before the body");
+  assert.match(content, /subagent-driven-development/);
+});
+
+test("implementer.md HARD-GATE appears before the body sections", () => {
+  const content = readSkill(join(ROOT, "agents/implementer.md"));
+  const hardGateIdx = content.indexOf("<HARD-GATE>");
+  const workflowIdx = content.indexOf("## Workflow");
+  assert.ok(hardGateIdx >= 0, "HARD-GATE block missing");
+  assert.ok(workflowIdx >= 0, "## Workflow section missing");
+  assert.ok(hardGateIdx < workflowIdx, "HARD-GATE must appear before ## Workflow");
 });
 
 test("implementer.md no longer has scattered RED step from old cycle", () => {
   // The old implementer.md had step 5 = "RED: write a failing test that
-  // captures the task's acceptance criteria" inline. After Part B that
+  // captures the task's acceptance criteria" inline. After F6 that
   // detail lives in the test-driven-development skill; the agent file
   // references the skill instead.
   const content = readSkill(join(ROOT, "agents/implementer.md"));
