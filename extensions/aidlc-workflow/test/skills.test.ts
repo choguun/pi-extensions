@@ -92,12 +92,12 @@ test("install.sh symlink points to verification-before-completion", (t) => {
   // Verify WHERE the symlink points, not just THAT it's a symlink. A stale
   // link to a deleted file would otherwise pass. install.sh builds the
   // target as "$skill/SKILL.md" where $skill is a directory path with a
-  // trailing slash, producing a "//" artifact — normalize both sides.
-  const target = readlinkSync(linkPath);
+  // trailing slash, producing a "//" artifact — normalize the target.
+  const target = readlinkSync(linkPath).replace(/\/\/+/g, "/");
   const expected = join(ROOT, "skills/verification-before-completion/SKILL.md");
   assert.equal(
-    target.replace(/\/+/g, "/"),
-    expected.replace(/\/+/g, "/"),
+    target,
+    expected,
     `symlink should point to ${expected}, got ${target}`,
   );
 });

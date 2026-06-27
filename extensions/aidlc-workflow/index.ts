@@ -335,7 +335,11 @@ const AidlcParams = Type.Object({
 			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress, execute-task",
 	}),
 	feature: Type.Optional(Type.String({ description: "Feature name (for 'start')" })),
-	task_id: Type.Optional(Type.String({ description: "Task ID like T-001 (for 'execute-task')" })),
+	task_id: Type.Optional(Type.String({ description: "Task ID like T-001 (for 'execute-task', 'append-progress')" })),
+	status: Type.Optional(Type.String({ description: "Task status (for 'append-progress') — e.g. complete, BLOCKED" })),
+	commit_range: Type.Optional(Type.String({ description: "Commit range (for 'append-progress') — e.g. abc1234..def5678" })),
+	review_status: Type.Optional(Type.String({ description: "Review status (for 'append-progress') — e.g. clean, needs_fix" })),
+	reason: Type.Optional(Type.String({ description: "Reason string (for 'append-progress' with status=BLOCKED)" })),
 	previous_report: Type.Optional(Type.String({ description: "Inline report content (for 'execute-task' — skip writing to disk)" })),
 	previous_review: Type.Optional(Type.String({ description: "Inline review content (for 'execute-task' — skip writing to disk)" })),
 });
@@ -1127,11 +1131,11 @@ export default function (pi: ExtensionAPI) {
 				// POSIX); the file is created on first use. Requires
 				// `.aidlc/` to exist so we never silently start a
 				// ledger in a non-AIDLC repo.
-				const taskId = (params as Record<string, unknown>).task_id as string | undefined;
-				const status = (params as Record<string, unknown>).status as string | undefined;
-				const commitRange = (params as Record<string, unknown>).commit_range as string | undefined;
-				const reviewStatus = (params as Record<string, unknown>).review_status as string | undefined;
-				const reason = (params as Record<string, unknown>).reason as string | undefined;
+				const taskId = params.task_id;
+				const status = params.status;
+				const commitRange = params.commit_range;
+				const reviewStatus = params.review_status;
+				const reason = params.reason;
 
 				const taskIdTrim = taskId?.trim();
 				const statusTrim = status?.trim();
@@ -1399,7 +1403,7 @@ export default function (pi: ExtensionAPI) {
 				content: [
 					{
 						type: "text",
-						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress, execute-task`,
+						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress, execute-task`,
 					},
 				],
 				isError: true,
