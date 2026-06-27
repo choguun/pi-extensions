@@ -322,7 +322,7 @@ const PhaseSchema = Type.Union([
 const AidlcParams = Type.Object({
 	action: Type.String({
 		description:
-			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd",
+			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress",
 	}),
 	feature: Type.Optional(Type.String({ description: "Feature name (for 'start')" })),
 });
@@ -1085,11 +1085,131 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			if (action === "append-progress") {
+				// F12: append a single task line to the local
+				// `.aidlc-progress.md` ledger. The ledger is gitignored
+				// and is the durable record of work between commits —
+				// used for compaction recovery (a future agent reads
+				// `.aidlc-progress.md` + `git log` to resume from the
+				// first incomplete task). Atomic append (single
+				// appendFileSync call is atomic for small writes on
+				// POSIX); the file is created on first use. Requires
+				// `.aidlc/` to exist so we never silently start a
+				// ledger in a non-AIDLC repo.
+				const taskId = (params as Record<string, unknown>).task_id as string | undefined;
+				const status = (params as Record<string, unknown>).status as string | undefined;
+				const commitRange = (params as Record<string, unknown>).commit_range as string | undefined;
+				const reviewStatus = (params as Record<string, unknown>).review_status as string | undefined;
+				const reason = (params as Record<string, unknown>).reason as string | undefined;
+
+				const taskIdTrim = taskId?.trim();
+				const statusTrim = status?.trim();
+				if (!taskIdTrim || !statusTrim) {
+					return {
+						content: [
+							{ type: "text", text: "Error: `task_id` and `status` are required for `append-progress`." },
+						],
+						isError: true,
+						details: { valid: false, errors: ["task_id and status required"] },
+					};
+				}
+
+				const aidlcDir = path.join(cwd, AIDLC_DIR);
+				if (!fs.existsSync(aidlcDir)) {
+					return {
+						content: [
+							{ type: "text", text: `Error: No \`${AIDLC_DIR}/\` directory in cwd. Run \`/aidlc start\` first.` },
+						],
+						isError: true,
+						details: { valid: false, errors: [`No ${AIDLC_DIR}/ directory in cwd`] },
+					};
+				}
+
+				const progressPath = path.join(cwd, ".aidlc-progress.md");
+				const line =
+					statusTrim === "BLOCKED"
+						? `- ${taskIdTrim}: BLOCKED (${reason?.trim() || "no reason given"})\n`
+						: `- ${taskIdTrim}: ${statusTrim} (commits ${commitRange?.trim() || "unknown"}, ${reviewStatus?.trim() || "review pending"})\n`;
+
+				fs.appendFileSync(progressPath, line);
+				return {
+					content: [
+						{
+							type: "text",
+							text: [
+								`**append-progress**`,
+								``,
+								`- Appended: \`${line.trim()}\``,
+								`- File: \`${progressPath}\``,
+							].join("\n"),
+						},
+					],
+					details: { valid: true, appended: line, path: progressPath },
+				};
+			}
+
+			if (action === "read-progress") {
+				// F12: read the local `.aidlc-progress.md` ledger. Returns
+				// the list of completed task lines for compaction recovery.
+				// Returns an empty list (not an error) when the file is
+				// missing — a fresh checkout is expected to have no
+				// ledger yet, and the implementer agent treats "empty" as
+				// "nothing done so far" without complaint.
+				const progressPath = path.join(cwd, ".aidlc-progress.md");
+				if (!fs.existsSync(progressPath)) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: [
+									`**read-progress**`,
+									``,
+									`- No \`.aidlc-progress.md\` yet (no work recorded for this checkout).`,
+								].join("\n"),
+							},
+						],
+						details: { tasks: [], count: 0, message: "No progress ledger yet" },
+					};
+				}
+				try {
+					const content = fs.readFileSync(progressPath, "utf-8");
+					const tasks = content
+						.split("\n")
+						.filter((line) => /^- T-\d+: /.test(line))
+						.map((line) => line.slice(2));
+					return {
+						content: [
+							{
+								type: "text",
+								text: [
+									`**read-progress**`,
+									``,
+									`- ${tasks.length} task(s) recorded in \`.aidlc-progress.md\`:`,
+									...tasks.map((t) => `  - ${t}`),
+								].join("\n"),
+							},
+						],
+						details: { tasks, count: tasks.length },
+					};
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Error reading \`.aidlc-progress.md\`: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						isError: true,
+						details: { tasks: [], count: 0, message: `Failed to read: ${err}` },
+					};
+				}
+			}
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd`,
+						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress`,
 					},
 				],
 				isError: true,
