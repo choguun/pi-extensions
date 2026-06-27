@@ -79,3 +79,9 @@ You are a specification writer. Your job is to take a brief (issue text, user me
 - Bash is for read-only inspection + git/gh CLI. Do NOT modify code files.
 - Read at least the directory structure + 1-2 representative files before writing the spec (so style and conventions are accurate).
 - If the brief is ambiguous, ASK before writing. The `specify` skill has a "surface assumptions" section.
+
+## When Scoping Tasks
+
+If a spec's plan involves multiple independent T-XXX tasks, invoke the
+`subagent-driven-development` skill to understand the dispatch protocol.
+Each task should be independently executable in a fresh subagent context.
