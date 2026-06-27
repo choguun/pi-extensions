@@ -1,7 +1,7 @@
 ---
 title: Tier 5 superpowers fusion: writing-plans format + behavioral evals via drill (F7 + F11)
 type: spec
-status: draft
+status: approved
 domain: [aidlc-workflow]
 ---
 
@@ -385,3 +385,4 @@ npm run evals
 ## Timeline
 
 2026-06-26 | spec drafted — 6-question brainstorming session resolved all major design decisions (F7=A full format, F11:B 4 scenarios, F11.1:B self-contained drill, commits:B 4 commits, scenarios:A YAML+markdown, F7+planner:A+D forward-only+rewrite). Five design sections approved (architecture, components, data flow, error handling, testing). Spec written and awaiting user review.
+2026-06-26 | spec approved — user approved all 6 brainstorming decisions + 5 design sections. Status updated from draft to approved. Spec is ready for writing-plans.
