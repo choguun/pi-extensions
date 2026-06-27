@@ -29,5 +29,10 @@ coverage/
 .env
 .env.local
 
-# AIDLC local ledger (per-session, never committed)
+# AIDLC + plan-mode + superpowers local artifacts (per-session, never committed)
+.aidlc/
 .aidlc-progress.md
+.plan.md
+.plan-mode-review.md
+.superpowers/
+.opencode/
