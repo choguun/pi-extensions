@@ -4,7 +4,7 @@
 
 ✅ **COMPLETE** — both test files written, all tests green, committed.
 
-- **Commit**: `<filled-after-commit>`
+- **Commit**: `0f0c60d`
 - **Tests**: 154 baseline + 15 (T.1) + 6 (T.2) = **175 pass, 0 fail**
 - **Typecheck**: clean
 
