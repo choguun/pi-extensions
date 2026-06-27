@@ -278,6 +278,27 @@ test("getCommitRangeForTask: returns 'unknown' when no git commits mention the t
 	rmSync(cwd, { recursive: true, force: true });
 });
 
+test("getCommitRangeForTask: escapes shell metacharacters in the task id (no command injection)", () => {
+	// AGENTS.md mandates shellQuote() for any string embedded in shell
+	// commands. If getCommitRangeForTask interpolates `taskId` directly,
+	// a malicious or malformed ID can inject arbitrary shell. We verify
+	// the protection by passing a taskId with `$(...)` command
+	// substitution and asserting the injected command did NOT execute.
+	const cwd = mkdtempSync(join(tmpdir(), "aidlc-exec-git-quote-"));
+	const marker = join(cwd, "injection-marker");
+	const maliciousId = `T-$(touch ${marker})`;
+	const result = getCommitRangeForTask(maliciousId, cwd);
+	// The marker file must NOT exist — shellQuote() (or equivalent)
+	// must have neutralised the `$(...)` substitution.
+	assert.ok(
+		!existsSync(marker),
+		`taskId containing shell metachar must not execute injected commands; marker at ${marker} should not exist`,
+	);
+	// Function still returns a sensible string (either a commit range or "unknown").
+	assert.ok(typeof result === "string");
+	rmSync(cwd, { recursive: true, force: true });
+});
+
 // =============================================================================
 // appendProgressForTask
 // =============================================================================

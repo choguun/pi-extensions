@@ -20,6 +20,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 
+import { shellQuote } from "./worktree.ts";
+
 /** Pull the `### Task T-NNN: ...` block from `.aidlc/plan.md`. Returns null if not found. */
 export function extractTaskBrief(planContent: string, taskId: string): string | null {
 	// Escape regex metacharacters in the task ID so e.g. `T-1.5` or `T-2(a)`
@@ -188,7 +190,7 @@ Return ONLY status + commit hashes + one-line summary.
 export function getCommitRangeForTask(taskId: string, cwd?: string): string {
 	try {
 		const opts = cwd ? { encoding: "utf8" as const, cwd } : { encoding: "utf8" as const };
-		const result = execSync(`git log --oneline -20 --grep="${taskId}" 2>/dev/null | head -3`, opts);
+		const result = execSync(`git log --oneline -20 --grep=${shellQuote(taskId)} 2>/dev/null | head -3`, opts);
 		const lines = result.trim().split("\n").filter((l) => l.length > 0);
 		if (lines.length === 0) return "unknown";
 		const hashes = lines.map((l) => l.split(" ")[0]);
