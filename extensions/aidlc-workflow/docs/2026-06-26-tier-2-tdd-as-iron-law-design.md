@@ -381,3 +381,13 @@ test/scenario-coverage.test.ts (if validation added)
 
 2026-06-26 | spec drafted — 7-question brainstorming session resolved all major design decisions (scope=C Full TDD, implementer=A surgical, skill=C adapt, spec=A mandatory Test Plan, plan=D both, integration=C all 4 phases, merging=D replace existing). Five design sections approved (architecture, components, data flow, error handling, testing). Spec written and awaiting user review.
 2026-06-26 | spec approved — user approved all 7 brainstorming decisions + 5 design sections. Status updated from draft to approved. Spec is ready for writing-plans.
+
+## Timeline (continued)
+
+2026-06-26 | Tier 2 F5 shipped — all 8 parts (A-H) complete. 16 tasks total. 154 tests passing (was 121 pre-Tier-2; +33 new tests across TDD skill, agent enforcement, validation actions). 4 real findings caught by per-task review and fixed:
+- A.2: 4 factual inaccuracies + 1 duplication (src/ fabrication, hypothetical error message, "via iron law" overstatement, speculative ST-NNN grep)
+- B.1: extensions/*/src/ fabrication in implementer.md
+- E.3: duplicate TDD row in implement/SKILL.md (Red Flags + Common Rationalizations)
+- H: validate-tdd missing from schema description
+
+Implementer demonstrated genuine TDD discipline (RED → verify → GREEN → verify → commit) on the validation actions in Part H.
