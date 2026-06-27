@@ -951,11 +951,145 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			if (action === "validate-tdd") {
+				// Sanity check for TDD discipline: in the current git
+				// diff (tracked modifications + untracked files), check
+				// that production-file lines added aren't shipped without
+				// any test additions. "Production" = anything NOT under a
+				// `test/` directory or named `*.test.ts` / `*.spec.ts`.
+				//
+				// This is intentionally a soft check — it returns
+				// `valid=false` with a clear message but does NOT block
+				// /ship. The implementer skill reads the message and
+				// decides (the task may be a docs change, a config tweak,
+				// or a refactor where existing tests already cover the
+				// behaviour).
+				const errors: string[] = [];
+
+				const numstat = tryRun("git diff HEAD --numstat", cwd);
+				if (numstat === null) {
+					errors.push("git diff failed — is this a git repo?");
+					return {
+						content: [
+							{
+								type: "text",
+								text: [`**validate-tdd**`, ``, `- ✖ ${errors[0]}`].join("\n"),
+							},
+						],
+						details: { valid: false, errors, productionLines: 0, testLines: 0 },
+					};
+				}
+
+				let productionAdded = 0;
+				let testAdded = 0;
+				let productionFiles = 0;
+				let testFiles = 0;
+
+				for (const line of numstat.split("\n")) {
+					// numstat lines look like: "<added>\t<removed>\t<path>"
+					// For renames, the path may contain "=>" arrow syntax.
+					// For binary files, the numbers are "-".
+					const parts = line.split("\t");
+					if (parts.length < 3) continue;
+					const addedStr = parts[0];
+					const filePathRaw = parts.slice(2).join("\t");
+					if (addedStr === "-") continue; // binary
+					const added = parseInt(addedStr, 10);
+					if (!Number.isFinite(added)) continue;
+
+					const isTest =
+						/\/test\//.test(filePathRaw) ||
+						/\.test\.[a-z]+$/i.test(filePathRaw) ||
+						/\.spec\.[a-z]+$/i.test(filePathRaw);
+
+					if (isTest) {
+						testAdded += added;
+						testFiles++;
+					} else {
+						productionAdded += added;
+						productionFiles++;
+					}
+				}
+
+				// Include untracked files (e.g. a brand-new test file that
+				// hasn't been `git add`-ed yet). `git status --porcelain`
+				// gives lines like "?? path/to/file". We approximate
+				// added-line counts for untracked files by reading the
+				// whole file (line count) and summing — the file is
+				// brand-new, so all its lines count as "added".
+				const porcelain = tryRun("git status --porcelain", cwd) ?? "";
+				for (const line of porcelain.split("\n")) {
+					if (!line.startsWith("?? ")) continue;
+					const filePath = line.slice(3).trim();
+					const fullPath = path.join(cwd, filePath);
+					let lineCount = 0;
+					try {
+						const stat = fs.statSync(fullPath);
+						if (!stat.isFile()) continue;
+						const content = fs.readFileSync(fullPath, "utf-8");
+						lineCount = content.split("\n").length;
+					} catch {
+						continue;
+					}
+					const isTest =
+						/\/test\//.test(filePath) ||
+						/\.test\.[a-z]+$/i.test(filePath) ||
+						/\.spec\.[a-z]+$/i.test(filePath);
+					if (isTest) {
+						testAdded += lineCount;
+						testFiles++;
+					} else {
+						productionAdded += lineCount;
+						productionFiles++;
+					}
+				}
+
+				// Decision rule: production lines added WITHOUT any
+				// test-file change is a TDD violation. If at least one
+				// test file was added/edited, the production work is
+				// considered covered.
+				const noTestsAdded = testAdded === 0 && testFiles === 0;
+				const productionOnly = noTestsAdded && productionAdded > 0;
+
+				if (productionOnly) {
+					errors.push(
+						`TDD imbalance: ${productionAdded} production line(s) added across ${productionFiles} file(s), but 0 test files changed. Did you skip RED?`,
+					);
+				}
+
+				const valid = errors.length === 0;
+				const lines: string[] = [
+					`**validate-tdd**`,
+					``,
+					`- Production lines added: ${productionAdded} (in ${productionFiles} file(s))`,
+					`- Test lines added:      ${testAdded} (in ${testFiles} file(s))`,
+					``,
+					valid
+						? `- ✔ TDD balance looks healthy (tests added alongside production code).`
+						: `- ✖ TDD balance violated:`,
+				];
+				if (!valid) {
+					for (const e of errors) lines.push(`  - ${e}`);
+				}
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: {
+						valid,
+						errors,
+						productionLines: productionAdded,
+						testLines: testAdded,
+						productionFiles,
+						testFiles,
+					},
+				};
+			}
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan`,
+						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd`,
 					},
 				],
 				isError: true,

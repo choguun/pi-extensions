@@ -301,3 +301,125 @@ test("validate-plan: mixed plan — some tasks have refs, some don't → lists e
 		rmRepo(dir);
 	}
 });
+
+// =============================================================================
+// validate-tdd
+// =============================================================================
+
+test("validate-tdd: clean tree (no changes) → valid=true, both counts zero", async () => {
+	const dir = makeRepo();
+	try {
+		const result = await runAction(dir, "validate-tdd");
+		assert.equal(result.details.valid, true, `errors: ${JSON.stringify(result.details.errors)}`);
+		assert.equal(result.details.productionLines, 0);
+		assert.equal(result.details.testLines, 0);
+	} finally {
+		rmRepo(dir);
+	}
+});
+
+test("validate-tdd: production file modified, no test changes → valid=false", async () => {
+	const dir = makeRepo();
+	try {
+		fs.writeFileSync(path.join(dir, "feature.ts"), "export const x = 1;\n");
+		execSync("git add -A && git commit -q -m 'add feature'", { cwd: dir });
+
+		// Now make a follow-up edit and stage it (untracked-only wouldn't
+		// show in `git diff HEAD` — we want a tracked modification).
+		fs.writeFileSync(path.join(dir, "feature.ts"), "export const x = 2;\nexport const y = 3;\n");
+		execSync("git add feature.ts", { cwd: dir });
+
+		const result = await runAction(dir, "validate-tdd");
+		assert.equal(result.details.valid, false, `expected invalid, errors: ${JSON.stringify(result.details.errors)}`);
+		assert.ok(result.details.productionLines > 0, `expected productionLines > 0, got ${result.details.productionLines}`);
+		assert.equal(result.details.testLines, 0);
+		assert.ok(
+			result.details.errors.some((e: string) => /TDD|skip.*RED/i.test(e)),
+			`expected error mentioning TDD/RED, got: ${JSON.stringify(result.details.errors)}`,
+		);
+	} finally {
+		rmRepo(dir);
+	}
+});
+
+test("validate-tdd: test file modified → valid=true", async () => {
+	const dir = makeRepo();
+	try {
+		fs.mkdirSync(path.join(dir, "test"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "test", "x.test.ts"), "test('placeholder', () => {});\n");
+		execSync("git add -A && git commit -q -m 'add test'", { cwd: dir });
+
+		// Now modify the test file
+		fs.writeFileSync(
+			path.join(dir, "test", "x.test.ts"),
+			"test('placeholder', () => {});\ntest('added', () => { expect(true).toBe(true); });\n",
+		);
+		execSync("git add test/x.test.ts", { cwd: dir });
+
+		const result = await runAction(dir, "validate-tdd");
+		assert.equal(result.details.valid, true, `errors: ${JSON.stringify(result.details.errors)}`);
+		assert.ok(result.details.testLines > 0, `expected testLines > 0, got ${result.details.testLines}`);
+	} finally {
+		rmRepo(dir);
+	}
+});
+
+test("validate-tdd: production + test both changed → valid=true", async () => {
+	const dir = makeRepo();
+	try {
+		fs.writeFileSync(path.join(dir, "feature.ts"), "export const x = 1;\n");
+		fs.writeFileSync(path.join(dir, "feature.test.ts"), "test('placeholder', () => {});\n");
+		execSync("git add -A && git commit -q -m 'initial'", { cwd: dir });
+
+		// Modify both
+		fs.writeFileSync(path.join(dir, "feature.ts"), "export const x = 2;\nexport const y = 3;\n");
+		fs.writeFileSync(
+			path.join(dir, "feature.test.ts"),
+			"test('placeholder', () => {});\ntest('checks x', () => { expect(2).toBe(2); });\n",
+		);
+		execSync("git add -A", { cwd: dir });
+
+		const result = await runAction(dir, "validate-tdd");
+		assert.equal(result.details.valid, true, `errors: ${JSON.stringify(result.details.errors)}`);
+		assert.ok(result.details.productionLines > 0);
+		assert.ok(result.details.testLines > 0);
+	} finally {
+		rmRepo(dir);
+	}
+});
+
+test("validate-tdd: untracked test file → valid=true (counts as test)", async () => {
+	const dir = makeRepo();
+	try {
+		// Add a tracked production file as the base
+		fs.writeFileSync(path.join(dir, "feature.ts"), "export const x = 1;\n");
+		execSync("git add -A && git commit -q -m 'initial'", { cwd: dir });
+
+		// Create a brand-new untracked test file (not yet `git add`-ed)
+		fs.writeFileSync(
+			path.join(dir, "feature.test.ts"),
+			"test('new', () => { expect(true).toBe(true); });\n",
+		);
+
+		const result = await runAction(dir, "validate-tdd");
+		assert.equal(result.details.valid, true, `errors: ${JSON.stringify(result.details.errors)}`);
+		assert.ok(result.details.testLines > 0, `expected testLines > 0, got ${result.details.testLines}`);
+	} finally {
+		rmRepo(dir);
+	}
+});
+
+test("validate-tdd: untracked production file only → valid=false", async () => {
+	const dir = makeRepo();
+	try {
+		// Brand-new untracked production file with no test counterpart
+		fs.writeFileSync(path.join(dir, "new-feature.ts"), "export const x = 1;\nexport const y = 2;\n");
+
+		const result = await runAction(dir, "validate-tdd");
+		assert.equal(result.details.valid, false, `expected invalid, errors: ${JSON.stringify(result.details.errors)}`);
+		assert.ok(result.details.productionLines > 0);
+		assert.equal(result.details.testLines, 0);
+	} finally {
+		rmRepo(dir);
+	}
+});
