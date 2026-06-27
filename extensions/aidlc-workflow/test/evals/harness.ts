@@ -53,7 +53,8 @@ export function parseFrontmatter(content: string): Scenario {
 }
 
 export function parseVerdict(judgeResponse: string): "pass" | "fail" | "ambiguous" {
-  const passMatches = judgeResponse.match(/\b(pass|yes|compliant)\b/gi) ?? [];
+  // "compliant" counts as a pass signal only when NOT part of "not compliant" or "non-compliant"
+  const passMatches = judgeResponse.match(/(?<!\bnot )(?<!\bnon-)\b(pass|yes|compliant)\b/gi) ?? [];
   const failMatches = judgeResponse.match(/\b(fail|no|non.compliant|incorrect)\b/gi) ?? [];
 
   if (passMatches.length > 0 && failMatches.length === 0) return "pass";
