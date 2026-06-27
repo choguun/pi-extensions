@@ -1,7 +1,7 @@
 ---
 title: Tier 3 superpowers fusion: polish bundle (F8 + F9 + F12)
 type: spec
-status: draft
+status: approved
 domain: [aidlc-workflow]
 ---
 
@@ -462,3 +462,4 @@ test/progress.test.ts
 ## Timeline
 
 2026-06-26 | spec drafted — 8-question brainstorming session resolved all major design decisions (approach=C mix, F12=A replace SDD, F8 scope=C agent+skill, F9 scope=B full lifecycle, bundling=A one PR, F8/F9=B verbatim+adapted, F12 writer=A tool writes, F12 location+format=A root+rich). Five design sections approved (architecture, components, data flow, error handling, testing). Spec written and awaiting user review.
+2026-06-26 | spec approved — user approved all 8 brainstorming decisions + 5 design sections. Status updated from draft to approved. Spec is ready for writing-plans.
