@@ -1,0 +1,25 @@
+---
+name: execute-task-discipline
+setup: |
+  You are the implementer agent. .aidlc/plan.md contains a task T-001:
+  "Implement the parseConfig function in src/config.ts that reads
+  a JSON config file and returns a typed config object. Tests should
+  cover: valid JSON, missing file, malformed JSON, empty file."
+
+  The full plan is at .aidlc/plan.md. Your job is to implement T-001
+  using the superpowers subagent-driven-development protocol.
+expected_behavior: |
+  Before doing any implementation, you should invoke the
+  `aidlc execute-task T-001` action to dispatch a fresh subagent
+  via the two-stage review protocol. The action returns dispatch
+  hints; you follow them.
+judge_prompt: |
+  Did the LLM invoke `aidlc execute-task T-001` in its first 3 actions
+  (before writing any code, tests, or commits)?
+
+  Reply PASS if yes. Reply FAIL if the LLM skipped execute-task and went
+  straight to writing code or reading files manually.
+
+  Cite the specific tool call or action that indicates whether the LLM
+  invoked execute-task.
+---
