@@ -19,26 +19,35 @@ export interface ScenarioResult {
   error?: string;
 }
 
-export function parseFrontmatter(content: string): Scenario {
+export function parseFrontmatter(content: string): Scenario | { error: string } {
   // Match YAML frontmatter between --- markers
   const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!match) return {} as Scenario;
+  if (!match) return { error: "No YAML frontmatter found (expected --- ... --- block at start)" };
 
   const yaml = match[1];
-  const result: Partial<Scenario> = {};
+  const result: Record<string, string> = {};
 
   // Parse each YAML key: value
   const lines = yaml.split("\n");
-  let currentKey: keyof Scenario | null = null;
+  let currentKey: string | null = null;
   let currentValue: string[] = [];
 
   for (const line of lines) {
     const kvMatch = line.match(/^(\w+):\s*(.*)$/);
     if (kvMatch) {
       if (currentKey) {
-        result[currentKey] = currentValue.join("\n").trim();
+        let value = currentValue.join("\n").trim();
+        // F12.2 polish — strip YAML `|` block-scalar indicator if it
+        // leaked into the first value line. With `setup: |`, the
+        // first captured value is literally `"|"`. Without this
+        // strip, downstream consumers see a leading `|` in the
+        // parsed text, which leaks into LLM prompts.
+        if (value.startsWith("|")) {
+          value = value.slice(1).trim();
+        }
+        result[currentKey] = value;
       }
-      currentKey = kvMatch[1] as keyof Scenario;
+      currentKey = kvMatch[1];
       currentValue = kvMatch[2] ? [kvMatch[2]] : [];
     } else if (currentKey && line.startsWith("  ")) {
       // Continuation line
@@ -46,10 +55,32 @@ export function parseFrontmatter(content: string): Scenario {
     }
   }
   if (currentKey) {
-    result[currentKey] = currentValue.join("\n").trim();
+    let value = currentValue.join("\n").trim();
+    if (value.startsWith("|")) {
+      value = value.slice(1).trim();
+    }
+    result[currentKey] = value;
   }
 
-  return result as Scenario;
+  // ---- Schema validation (F12.2 polish) ----
+  // Reject unknown keys first — typo guard. A scenario with an
+  // unknown key is almost certainly wrong (the 4 required fields
+  // are exhaustive), and silently keeping it would let typos like
+  // `expected_behavoir` pass through.
+  const REQUIRED_FIELDS = ["name", "setup", "expected_behavior", "judge_prompt"] as const;
+  for (const key of Object.keys(result)) {
+    if (!(REQUIRED_FIELDS as readonly string[]).includes(key)) {
+      return { error: `Unknown key: ${key}` };
+    }
+  }
+  // Then enforce that every required field is present.
+  for (const key of REQUIRED_FIELDS) {
+    if (!(key in result)) {
+      return { error: `Missing required field: ${key}` };
+    }
+  }
+
+  return result as unknown as Scenario;
 }
 
 export function parseVerdict(judgeResponse: string): "pass" | "fail" | "ambiguous" {
@@ -76,8 +107,11 @@ export async function runScenario(
     const content = readFileSync(scenarioPath, "utf8");
     const scenario = parseFrontmatter(content);
 
-    if (!scenario.name || !scenario.setup || !scenario.judge_prompt) {
-      return { name, passed: false, reasoning: "", status: "error", error: "Missing required fields" };
+    // F12.2 polish — parseFrontmatter now returns Scenario | { error }.
+    // Fail fast with a clear error rather than trying to use a
+    // half-populated Scenario object.
+    if ("error" in scenario) {
+      return { name, passed: false, reasoning: "", status: "error", error: scenario.error };
     }
 
     // Step 1: Send setup to LLM

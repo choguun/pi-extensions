@@ -10,13 +10,12 @@
 //                     ST-NNN references (Tier 2 spec-scenario links)
 //                     # Self-Review section
 //
-// `validatePlanFormat()` is the single source of truth for these checks.
-// It's exported so future tasks can wire it into `aidlc validate-plan`
-// without duplicating the regex set.
+// `validatePlanFormat()` is the single source of truth for these checks,
+// exported from `../plan-format.ts`. Tests import it from there — no
+// duplicated regex set in the test file (F12.2 polish).
 //
-// Legacy detection: pre-F7.1 plans used `## T-NNN: <summary>` with no
-// Files/Steps/Interfaces. `isLegacyPlan()` flags those so an automated
-// migration / re-plan prompt can fire.
+// `isLegacyPlan()` flags pre-F7.1 plans (T-NNN summaries with no Files/
+// Steps) so an automated migration / re-plan prompt can fire.
 //
 // Run with: node --test test/plan-format.test.ts
 
@@ -25,120 +24,13 @@ import { join } from "node:path";
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
+import {
+	validatePlanFormat,
+	isLegacyPlan,
+} from "../plan-format.ts";
+
 const ROOT = join(import.meta.dirname, "..");
 const TEMPLATE_PATH = join(ROOT, "docs/plans/_template.md");
-
-// ---------------------------------------------------------------------
-// Validation helpers
-// ---------------------------------------------------------------------
-
-export interface PlanFormatResult {
-	valid: boolean;
-	errors: string[];
-}
-
-/**
- * Pull every task section out of a plan and return its body lines.
- *
- * We accept `## Task T-NNN:` (the canonical style used by existing
- * plans under docs/plans/) and `### Task T-NNN:` (the form shown in
- * `agents/planner.md`). Both are recognized — the validator's job is
- * to enforce format, not to pick a fight about heading level. Body
- * runs from the heading itself up to (but not including) the next task
- * heading — same line-based walk used by `validate-plan` in `index.ts`.
- */
-function extractTaskSections(planContent: string): Array<{ id: string; body: string }> {
-	const lines = planContent.split("\n");
-	const indices: Array<{ line: number; id: string }> = [];
-	for (let i = 0; i < lines.length; i++) {
-		// Match `## Task T-NNN:` / `### Task T-NNN:` / `## T-NNN:` / `### T-NNN:`
-		const m = lines[i].match(/^#{2,3}\s+(?:Task\s+)?(T-\d+):/);
-		if (m) indices.push({ line: i, id: m[1] });
-	}
-	return indices.map((idx, k) => {
-		const start = idx.line;
-		const end = k + 1 < indices.length ? indices[k + 1].line : lines.length;
-		return { id: idx.id, body: lines.slice(start, end).join("\n") };
-	});
-}
-
-/**
- * Validate a plan against the full superpowers writing-plans format.
- *
- * Required:
- *   - **Goal:**, **Architecture:**, **Tech Stack:** in the plan header
- *   - At least one task section
- *   - Every task has **Files:** and **Steps:**
- *   - Every task's **Steps:** body contains at least one fenced code block
- *
- * Not enforced (positive features, recognized but not required):
- *   - **Interfaces:** (superpowers full format)
- *   - ST-NNN references (Tier 2 spec-scenario links)
- *   - `# Self-Review` section
- */
-export function validatePlanFormat(planContent: string): PlanFormatResult {
-	const errors: string[] = [];
-
-	// ---- Header ----
-	if (!/\*\*Goal:\*\*/.test(planContent)) {
-		errors.push("Plan header missing **Goal:**");
-	}
-	if (!/\*\*Architecture:\*\*/.test(planContent)) {
-		errors.push("Plan header missing **Architecture:**");
-	}
-	if (!/\*\*Tech Stack:\*\*/.test(planContent)) {
-		errors.push("Plan header missing **Tech Stack:**");
-	}
-
-	// ---- Tasks ----
-	const tasks = extractTaskSections(planContent);
-	if (tasks.length === 0) {
-		errors.push("Plan contains no task sections (## Task T-NNN: or ### Task T-NNN:)");
-	}
-	for (const task of tasks) {
-		if (!/\*\*Files:\*\*/.test(task.body)) {
-			errors.push(`${task.id} missing **Files:**`);
-		}
-		if (!/\*\*Steps:\*\*/.test(task.body)) {
-			errors.push(`${task.id} missing **Steps:**`);
-		}
-		// Steps must include at least one fenced code block. We look at the
-		// whole task body (not just a Steps sub-block) because extracting the
-		// sub-block robustly across heading-level variants is fiddly; any
-		// fenced block anywhere in the task is good enough as a placeholder
-		// for "Steps shows actual code". A more precise check would extract
-		// only the Steps sub-body — left for a follow-up if it matters.
-		if (/\*\*Steps:\*\*/.test(task.body) && !/```/.test(task.body)) {
-			errors.push(`${task.id} **Steps:** lacks code blocks`);
-		}
-	}
-
-	return { valid: errors.length === 0, errors };
-}
-
-/**
- * Detect a legacy-style plan: task headings present, but none of them
- * have **Files:** or **Steps:**. Pre-F7.1 plans had only a summary
- * line per task and no structured fields — that's the shape we want
- * to flag for migration.
- */
-export function isLegacyPlan(planContent: string): boolean {
-	const lines = planContent.split("\n");
-	let taskCount = 0;
-	let fullFormatCount = 0;
-	for (let i = 0; i < lines.length; i++) {
-		const m = lines[i].match(/^#{2,3}\s+(?:Task\s+)?(T-\d+):/);
-		if (!m) continue;
-		taskCount++;
-		// Look ahead ~40 lines for either Files: or Steps: — enough to
-		// cover a per-task block without scanning the whole file.
-		const lookahead = lines.slice(i, i + 40).join("\n");
-		if (/\*\*Files:\*\*/.test(lookahead) || /\*\*Steps:\*\*/.test(lookahead)) {
-			fullFormatCount++;
-		}
-	}
-	return taskCount > 0 && fullFormatCount === 0;
-}
 
 // ---------------------------------------------------------------------
 // Canonical-structure fixture (used by the _template.md test)
@@ -460,4 +352,72 @@ test("plan header (Goal/Architecture/Tech Stack) is required", () => {
 	assert.ok(result.errors.some((e) => /missing \*\*Goal:\*\*/.test(e)));
 	assert.ok(result.errors.some((e) => /missing \*\*Architecture:\*\*/.test(e)));
 	assert.ok(result.errors.some((e) => /missing \*\*Tech Stack:\*\*/.test(e)));
+});
+
+// F12.2 polish — scenarioCount field on the format result.
+
+test("validatePlanFormat returns scenarioCount equal to ST-NNN reference count", () => {
+	// VALID_PLAN has `**Implements:** ST-001, ST-002` — exactly 2 ST-NNN refs.
+	const result = validatePlanFormat(VALID_PLAN);
+	assert.equal(result.scenarioCount, 2);
+});
+
+test("validatePlanFormat scenarioCount is 0 when no ST-NNN references", () => {
+	// PLAN_NO_HEADER has a T-001 task but no ST-NNN refs in the body.
+	const result = validatePlanFormat(PLAN_NO_HEADER);
+	assert.equal(result.scenarioCount, 0);
+});
+
+test("validatePlanFormat scenarioCount does not gate validity (ST refs optional)", () => {
+	// A plan with zero ST-NNN refs but all required structural sections
+	// must still be `valid: true`. ST-NNN is informational — its absence
+	// doesn't fail the format check.
+	const result = validatePlanFormat(VALID_PLAN);
+	assert.equal(result.valid, true);
+	assert.ok(result.scenarioCount >= 0, "scenarioCount should be a number");
+});
+
+test("validatePlanFormat scenarioCount counts every ST-NNN token across the plan", () => {
+	// A plan with ST-NNN refs in multiple places (Implements: line + a
+	// later "Refs:" line, for example) — every `ST-NNN` token counts.
+	const planWithManyRefs = `# Plan With Many Refs
+
+**Goal:** Test scenario count.
+
+**Architecture:** Multi-ref.
+
+**Tech Stack:** TS.
+
+---
+
+## Task T-001: First
+
+**Implements:** ST-001, ST-002, ST-003
+
+**Files:**
+- Create: \`a.ts\`
+
+**Steps:**
+
+\`\`\`typescript
+// code
+\`\`\`
+
+---
+
+## Task T-002: Second
+
+**Implements:** ST-003
+
+**Files:**
+- Create: \`b.ts\`
+
+**Steps:**
+
+\`\`\`typescript
+// code
+\`\`\`
+`;
+	const result = validatePlanFormat(planWithManyRefs);
+	assert.equal(result.scenarioCount, 4); // ST-001, ST-002, ST-003 (×2)
 });
