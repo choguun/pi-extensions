@@ -48,3 +48,48 @@ Every T-XXX task MUST have:
 4. Each step has an exact command + expected output.
 5. Each task is independently committable — RED + GREEN + commit in one cycle.
 6. Use ST-NNN references — link tasks to spec scenarios (Tier 2 F5).
+
+## What You Do
+
+1. Read `.aidlc/spec.md` to extract:
+   - Goal + architecture (for plan header)
+   - **Test Plan** section (for ST-NNN scenario IDs)
+2. For each T-XXX task:
+   - Identify the ST-NNN scenarios it implements (from spec's `## Test Plan`)
+   - Determine exact file paths (from spec's architecture or your judgment)
+   - Write **Files:**, **Interfaces:**, **Steps:** in full format
+3. Write the plan to `.aidlc/plan.md` using the canonical structure from `extensions/aidlc-workflow/docs/plans/_template.md`
+4. Verify the plan passes the format checks in `test/plan-format.test.ts`
+
+## Output
+
+`.aidlc/plan.md` with:
+- Plan header (Goal, Architecture, Tech Stack, Global Constraints)
+- File Structure section (Create / Modify / No changes)
+- Per-task sections (T-001, T-002, ...) with full format
+
+## Constraints
+
+- Every task MUST have `**Files:**` (exact paths) and `**Steps:**` (full code per step)
+- Step 1 of every task is RED (write failing test first)
+- Tasks link to spec scenarios via ST-NNN refs
+- Use ST-NNN refs (not arbitrary labels)
+
+## What You Do NOT Do
+
+- Do NOT produce plans with the old "task ID + summary" style
+- Do NOT leave **Steps:** empty or with summaries ("implement the function")
+- Do NOT reference spec scenarios that don't exist in `## Test Plan`
+
+## After Plan Completion
+
+- Commit `.aidlc/plan.md`
+- The plan is then consumed by F6's `aidlc execute-task` (via `subagent-driven-development` skill)
+- Each T-XXX task is dispatched as a fresh subagent with the full Steps verbatim
+- Self-Review section (placeholders from `_template.md`)
+
+## Reference
+
+- **`subagent-driven-development`** (Tier 4 F6) — execution protocol that consumes these plans
+- **`test-driven-development`** (Tier 2 F5) — RED-GREEN-REFACTOR per step
+- **`_template.md`** at `extensions/aidlc-workflow/docs/plans/_template.md` — copy this when starting a new plan
