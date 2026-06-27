@@ -165,6 +165,46 @@ restart pi, the new code loads.
   with every way an agent will try to skip the gate + the rebuttal.
   See `skills/specify/SKILL.md` for the pattern.
 
+### Local artifacts (not committed)
+
+The following artifacts are per-developer / per-session / per-clone local
+state — they belong in `.git/info/exclude` (local-only, never tracked,
+doesn't ship in PRs), **not** in `.gitignore` (which ships with every
+PR and imposes the developer's local tooling on every contributor).
+
+| Pattern | Why |
+|---|---|
+| `.aidlc/` | AIDLC workflow per-loop state (created when running `aidlc start` etc. in any repo) |
+| `.aidlc-progress.md` | AIDLC durable progress ledger |
+| `.plan.md`, `.plan-mode-review.md` | plan-mode extension's per-session artifacts |
+| `.superpowers/` | superpowers sdd workspace |
+| `.opencode/` | opencode plans |
+
+If you use AIDLC (or plan-mode or superpowers) in any repo, add these
+patterns to **that repo's** `.git/info/exclude` (NOT to its `.gitignore`).
+The pattern syntax is identical to `.gitignore`.
+
+Quick setup:
+
+```bash
+# Inside the repo where you run AIDLC:
+EXCLUDE="$(git rev-parse --git-path info/exclude)"
+mkdir -p "$(dirname "$EXCLUDE")"
+cat >> "$EXCLUDE" <<'EOF'
+# AIDLC + plan-mode + superpowers local artifacts (per-session, never committed)
+.aidlc/
+.aidlc-progress.md
+.plan.md
+.plan-mode-review.md
+.superpowers/
+.opencode/
+EOF
+```
+
+This is the standard git mechanism for per-clone local exclusions
+(same syntax as `.gitignore`, but git never tracks it, so other
+contributors don't see it).
+
 ### Tests (extensions/aidlc-workflow/test/)
 
 - **Use Node 24's built-in test runner** (`node --test`). No `ts-node`,

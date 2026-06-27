@@ -30,9 +30,5 @@ coverage/
 .env.local
 
 # AIDLC + plan-mode + superpowers local artifacts (per-session, never committed)
-.aidlc/
-.aidlc-progress.md
-.plan.md
-.plan-mode-review.md
-.superpowers/
-.opencode/
+# — moved to .git/info/exclude (local-only, doesn't ship in PRs)
+# — see AGENTS.md "Local artifacts (not committed)" section for the canonical setup
