@@ -72,3 +72,7 @@ Commit 2: F12.2 — Tier 5 polish (validate-plan action, parseFrontmatter fix, s
 ## Timeline
 
 2026-06-26 | spec drafted + approved — user approved all 3 design decisions and requested immediate implementation. 7 small fixes total, 2 commits.
+
+## Timeline (continued)
+
+2026-06-26 | F12-polish shipped — 7 small fixes (AidlcParams TypeBox schema, implementer tools list, normalizer regex, unknown-action message, validate-plan action + plan-format.ts module, parseFrontmatter strip |, parseFrontmatter schema validation) in 2 commits. 14 new tests (4 for Commit 1 + 10 for Commit 2). Total: 230 tests passing.
