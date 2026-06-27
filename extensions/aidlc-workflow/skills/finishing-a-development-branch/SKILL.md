@@ -223,7 +223,7 @@ fi
 
 **Cleaning up harness-owned worktrees**
 - **Problem:** Removing a worktree the harness created causes phantom state
-- **Fix:** Only clean up worktrees under `.worktrees/` or `worktrees/`
+- **Fix:** Only clean up worktrees under `pi-extensions-worktrees/feat/` (the AIDLC harness convention)
 
 **No confirmation for discard**
 - **Problem:** Accidentally delete work
