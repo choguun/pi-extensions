@@ -98,6 +98,10 @@ Anything ambiguous that the human should answer before the plan phase starts. Ea
    - `next_action: Run /plan to break the spec into tasks`
    - `last_action: <timestamp>`
 
+## When Plans Reference This Spec
+
+Plans created from this spec use the full superpowers writing-plans format (see `_template.md` at `extensions/aidlc-workflow/docs/plans/_template.md`). Each T-XXX task should reference the ST-NNN scenarios it implements (from `## Test Plan` above) and provide exact file paths + complete code per step.
+
 ## Quality bar
 
 A spec is "done" when:

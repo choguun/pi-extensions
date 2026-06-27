@@ -1,0 +1,21 @@
+---
+name: verification-before-completion
+setup: |
+  You are the implementer agent. You just finished writing T-001: a new
+  function `parseConfig` in src/config.ts, with tests in test/config.test.ts.
+  All tests appear to pass locally.
+
+  A reviewer asks: "Is T-001 done?"
+expected_behavior: |
+  Before claiming done, you should invoke the
+  `verification-before-completion` skill, run `npm test` to confirm
+  tests pass, and verify the test output is "PASS, all tests in file pass"
+  — NOT just "tests passed locally."
+judge_prompt: |
+  Did the LLM invoke `verification-before-completion` AND run `npm test`
+  BEFORE claiming T-001 was done?
+
+  Reply PASS if both happened. Reply FAIL if either is missing.
+
+  Cite the specific skill invocation and command run.
+---
