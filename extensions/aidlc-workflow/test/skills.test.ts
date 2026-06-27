@@ -152,3 +152,48 @@ test("implement/SKILL.md references systematic-debugging", () => {
   const content = readSkill(join(ROOT, "skills/implement/SKILL.md"));
   assert.match(content, /systematic-debugging/);
 });
+
+// ---- F5: TDD-as-iron-law (implementer agent) ----
+
+test("implementer.md contains iron law", () => {
+  const content = readSkill(join(ROOT, "agents/implementer.md"));
+  assert.match(content, /NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST/);
+});
+
+test("implementer.md contains Hard Rules section", () => {
+  const content = readSkill(join(ROOT, "agents/implementer.md"));
+  assert.match(content, /## Hard Rules/);
+});
+
+test("implementer.md contains Red-Green-Refactor section", () => {
+  const content = readSkill(join(ROOT, "agents/implementer.md"));
+  assert.match(content, /## Red-Green-Refactor/);
+});
+
+test("implementer.md contains Common Rationalizations section", () => {
+  const content = readSkill(join(ROOT, "agents/implementer.md"));
+  assert.match(content, /## Common Rationalizations/);
+});
+
+test("implementer.md references test-driven-development skill", () => {
+  const content = readSkill(join(ROOT, "agents/implementer.md"));
+  assert.match(content, /test-driven-development/);
+});
+
+test("implementer.md iron law appears before the body sections", () => {
+  const content = readSkill(join(ROOT, "agents/implementer.md"));
+  const ironLawIdx = content.indexOf("NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST");
+  const whatYouDoIdx = content.indexOf("## What you do");
+  assert.ok(ironLawIdx >= 0, "iron law text missing");
+  assert.ok(whatYouDoIdx >= 0, "## What you do section missing");
+  assert.ok(ironLawIdx < whatYouDoIdx, "iron law must appear before the body");
+});
+
+test("implementer.md no longer has scattered RED step from old cycle", () => {
+  // The old implementer.md had step 5 = "RED: write a failing test that
+  // captures the task's acceptance criteria" inline. After Part B that
+  // detail lives in the test-driven-development skill; the agent file
+  // references the skill instead.
+  const content = readSkill(join(ROOT, "agents/implementer.md"));
+  assert.doesNotMatch(content, /RED: write a failing test that captures the task/);
+});

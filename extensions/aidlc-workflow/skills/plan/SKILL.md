@@ -3,6 +3,10 @@ name: plan
 description: Breaks the AIDLC spec into ordered, testable tasks. Use when the current AIDLC phase=planning. Reads `.aidlc/spec.md`; produces `.aidlc/plan.md` with one task per vertical slice.
 ---
 
+<HARD-GATE>
+Every plan task MUST follow TDD-ordered format: reference ≥1 ST-NNN scenario, RED-GREEN-REFACTOR steps with full code, independently committable. Planner refuses to commit orphan tasks.
+</HARD-GATE>
+
 # Plan
 
 Decompose the spec into tasks. Each task is a **vertical slice** (one complete feature path: schema + API + UI for one user-visible thing), not a horizontal slice (all DB, then all API, then all UI).

@@ -3,6 +3,10 @@ name: specify
 description: Writes the spec for an AIDLC feature. Use when the current AIDLC phase=specifying. Reads the brief from `.aidlc/state.md` notes and the PR description; produces `.aidlc/spec.md`.
 ---
 
+<HARD-GATE>
+Every spec MUST include `## Test Plan` with ≥1 scenario (ST-NNN). Spec-writer refuses to commit without it.
+</HARD-GATE>
+
 # Specify
 
 Write a complete specification for the AIDLC feature. This is the foundation — every other phase (plan, implement, test, review) reads this spec as its source of truth.

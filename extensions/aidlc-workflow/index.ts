@@ -321,7 +321,8 @@ const PhaseSchema = Type.Union([
 
 const AidlcParams = Type.Object({
 	action: Type.String({
-		description: "Action: start, status, sync, classify-comments, next",
+		description:
+			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd",
 	}),
 	feature: Type.Optional(Type.String({ description: "Feature name (for 'start')" })),
 });
@@ -791,11 +792,304 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			if (action === "validate-spec") {
+				// Enforce that `.aidlc/spec.md` has a `## Test Plan` section
+				// with at least one `### ST-NNN` scenario. The TDD skill
+				// and the spec-writer agent both rely on this contract —
+				// the planner uses `ST-NNN` references to bind tasks to
+				// testable scenarios, so a missing Test Plan breaks the
+				// downstream validate-plan check too.
+				const specPath = path.join(cwd, AIDLC_DIR, "spec.md");
+				const errors: string[] = [];
+
+				if (!exists(specPath)) {
+					errors.push("spec.md not found in .aidlc/");
+					return {
+						content: [
+							{
+								type: "text",
+								text: [
+									`**validate-spec**`,
+									``,
+									`- ✖ ${errors[0]}`,
+									``,
+									`Run \`/specify\` to write the spec first.`,
+								].join("\n"),
+							},
+						],
+						details: { valid: false, errors, scenarioCount: 0 },
+					};
+				}
+
+				const content = readFile(specPath) ?? "";
+
+				if (!/^## Test Plan/m.test(content)) {
+					errors.push("Missing `## Test Plan` section in spec.md");
+				}
+
+				const scenarios = content.match(/^### ST-\d+:/gm) ?? [];
+				if (scenarios.length === 0) {
+					errors.push("No ST-NNN scenarios found in `## Test Plan` (need at least one `### ST-001: ...` heading)");
+				}
+
+				const valid = errors.length === 0;
+				const lines: string[] = [
+					`**validate-spec**`,
+					``,
+					valid
+						? `- ✔ \`## Test Plan\` present with ${scenarios.length} ST-NNN scenario(s)`
+						: `- ✖ ${errors.length} issue(s):`,
+				];
+				if (!valid) {
+					for (const e of errors) lines.push(`  - ${e}`);
+				}
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: { valid, errors, scenarioCount: scenarios.length },
+				};
+			}
+
+			if (action === "validate-plan") {
+				// Enforce that every `### T-NNN` task in `.aidlc/plan.md`
+				// either references at least one `ST-NNN` scenario or is
+				// explicitly marked as `(non-test refactor)`. This is the
+				// planner's contract — every implementation task must be
+				// traceable back to a testable acceptance criterion. Pure
+				// refactors (rename, restructure) are exempt via the
+				// marker so they don't have to fabricate an ST link.
+				const planPath = path.join(cwd, AIDLC_DIR, "plan.md");
+				const errors: string[] = [];
+
+				if (!exists(planPath)) {
+					errors.push("plan.md not found in .aidlc/");
+					return {
+						content: [
+							{
+								type: "text",
+								text: [
+									`**validate-plan**`,
+									``,
+									`- ✖ ${errors[0]}`,
+									``,
+									`Run \`/plan\` to write the plan first.`,
+								].join("\n"),
+							},
+						],
+						details: { valid: false, errors, taskCount: 0, offendingTasks: [] },
+					};
+				}
+
+				const content = readFile(planPath) ?? "";
+
+				// Find every `### T-NNN:` task heading and the body that
+				// belongs to it (everything until the next `### T-NNN:` or
+				// end of file). For each, decide if it has at least one
+				// ST-NNN reference OR a (non-test refactor) marker.
+				//
+				// Line-based parsing is more robust than a single
+				// multiline regex with lazy quantifiers — the regex
+				// variant (originally tried) failed to advance past the
+				// first task because the lookahead consumed `\n` boundary
+				// chars in a way that confused `lastIndex`. Splitting by
+				// lines and walking heading positions is straightforward
+				// and easy to debug.
+				const planLines = content.split("\n");
+				const taskIndices: Array<{ line: number; id: string }> = [];
+				for (let i = 0; i < planLines.length; i++) {
+					const m = planLines[i].match(/^### (T-\d+):/);
+					if (m) taskIndices.push({ line: i, id: m[1] });
+				}
+				const tasks: Array<{ id: string; body: string; ok: boolean; reason?: string }> = [];
+				for (let k = 0; k < taskIndices.length; k++) {
+					// Include the heading line itself in `body` so markers
+					// like `(non-test refactor)` placed in the heading
+					// (the common style — `### T-001: rename foo (non-test refactor)`)
+					// are detected.
+					const start = taskIndices[k].line;
+					const end = k + 1 < taskIndices.length ? taskIndices[k + 1].line : planLines.length;
+					const body = planLines.slice(start, end).join("\n");
+					const hasStRef = /\bST-\d+\b/.test(body);
+					const isRefactor = /\(non-test refactor\)/i.test(body);
+					if (hasStRef || isRefactor) {
+						tasks.push({ id: taskIndices[k].id, body, ok: true });
+					} else {
+						tasks.push({
+							id: taskIndices[k].id,
+							body,
+							ok: false,
+							reason: `${taskIndices[k].id} references no ST-NNN scenario and has no \`(non-test refactor)\` marker`,
+						});
+					}
+				}
+
+				const offending = tasks.filter((t) => !t.ok);
+				for (const t of offending) {
+					if (t.reason) errors.push(t.reason);
+				}
+
+				const valid = errors.length === 0;
+				const lines: string[] = [
+					`**validate-plan**`,
+					``,
+					valid
+						? `- ✔ ${tasks.length} task(s) all reference ST-NNN scenarios (or are marked non-test refactor)`
+						: `- ✖ ${offending.length}/${tasks.length} task(s) missing ST-NNN reference:`,
+				];
+				if (!valid) {
+					for (const e of errors) lines.push(`  - ${e}`);
+				}
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: {
+						valid,
+						errors,
+						taskCount: tasks.length,
+						offendingTasks: offending.map((t) => t.id),
+					},
+				};
+			}
+
+			if (action === "validate-tdd") {
+				// Sanity check for TDD discipline: in the current git
+				// diff (tracked modifications + untracked files), check
+				// that production-file lines added aren't shipped without
+				// any test additions. "Production" = anything NOT under a
+				// `test/` directory or named `*.test.ts` / `*.spec.ts`.
+				//
+				// This is intentionally a soft check — it returns
+				// `valid=false` with a clear message but does NOT block
+				// /ship. The implementer skill reads the message and
+				// decides (the task may be a docs change, a config tweak,
+				// or a refactor where existing tests already cover the
+				// behaviour).
+				const errors: string[] = [];
+
+				const numstat = tryRun("git diff HEAD --numstat", cwd);
+				if (numstat === null) {
+					errors.push("git diff failed — is this a git repo?");
+					return {
+						content: [
+							{
+								type: "text",
+								text: [`**validate-tdd**`, ``, `- ✖ ${errors[0]}`].join("\n"),
+							},
+						],
+						details: { valid: false, errors, productionLines: 0, testLines: 0 },
+					};
+				}
+
+				let productionAdded = 0;
+				let testAdded = 0;
+				let productionFiles = 0;
+				let testFiles = 0;
+
+				for (const line of numstat.split("\n")) {
+					// numstat lines look like: "<added>\t<removed>\t<path>"
+					// For renames, the path may contain "=>" arrow syntax.
+					// For binary files, the numbers are "-".
+					const parts = line.split("\t");
+					if (parts.length < 3) continue;
+					const addedStr = parts[0];
+					const filePathRaw = parts.slice(2).join("\t");
+					if (addedStr === "-") continue; // binary
+					const added = parseInt(addedStr, 10);
+					if (!Number.isFinite(added)) continue;
+
+					const isTest =
+						/\/test\//.test(filePathRaw) ||
+						/\.test\.[a-z]+$/i.test(filePathRaw) ||
+						/\.spec\.[a-z]+$/i.test(filePathRaw);
+
+					if (isTest) {
+						testAdded += added;
+						testFiles++;
+					} else {
+						productionAdded += added;
+						productionFiles++;
+					}
+				}
+
+				// Include untracked files (e.g. a brand-new test file that
+				// hasn't been `git add`-ed yet). `git status --porcelain`
+				// gives lines like "?? path/to/file". We approximate
+				// added-line counts for untracked files by reading the
+				// whole file (line count) and summing — the file is
+				// brand-new, so all its lines count as "added".
+				const porcelain = tryRun("git status --porcelain", cwd) ?? "";
+				for (const line of porcelain.split("\n")) {
+					if (!line.startsWith("?? ")) continue;
+					const filePath = line.slice(3).trim();
+					const fullPath = path.join(cwd, filePath);
+					let lineCount = 0;
+					try {
+						const stat = fs.statSync(fullPath);
+						if (!stat.isFile()) continue;
+						const content = fs.readFileSync(fullPath, "utf-8");
+						lineCount = content.split("\n").length;
+					} catch {
+						continue;
+					}
+					const isTest =
+						/\/test\//.test(filePath) ||
+						/\.test\.[a-z]+$/i.test(filePath) ||
+						/\.spec\.[a-z]+$/i.test(filePath);
+					if (isTest) {
+						testAdded += lineCount;
+						testFiles++;
+					} else {
+						productionAdded += lineCount;
+						productionFiles++;
+					}
+				}
+
+				// Decision rule: production lines added WITHOUT any
+				// test-file change is a TDD violation. If at least one
+				// test file was added/edited, the production work is
+				// considered covered.
+				const noTestsAdded = testAdded === 0 && testFiles === 0;
+				const productionOnly = noTestsAdded && productionAdded > 0;
+
+				if (productionOnly) {
+					errors.push(
+						`TDD imbalance: ${productionAdded} production line(s) added across ${productionFiles} file(s), but 0 test files changed. Did you skip RED?`,
+					);
+				}
+
+				const valid = errors.length === 0;
+				const lines: string[] = [
+					`**validate-tdd**`,
+					``,
+					`- Production lines added: ${productionAdded} (in ${productionFiles} file(s))`,
+					`- Test lines added:      ${testAdded} (in ${testFiles} file(s))`,
+					``,
+					valid
+						? `- ✔ TDD balance looks healthy (tests added alongside production code).`
+						: `- ✖ TDD balance violated:`,
+				];
+				if (!valid) {
+					for (const e of errors) lines.push(`  - ${e}`);
+				}
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: {
+						valid,
+						errors,
+						productionLines: productionAdded,
+						testLines: testAdded,
+						productionFiles,
+						testFiles,
+					},
+				};
+			}
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next`,
+						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd`,
 					},
 				],
 				isError: true,

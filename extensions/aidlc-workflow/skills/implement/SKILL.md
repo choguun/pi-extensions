@@ -147,7 +147,7 @@ These thoughts mean STOP — you're rationalizing:
 
 | Thought | Reality |
 |---|---|
-| "I'll write the test after" | That's not TDD. Tests-after prove nothing — you never saw them catch the bug. |
+| "I'll write the test after" | That's not TDD. Invoke `test-driven-development` skill. Iron law: NO PRODUCTION CODE WITHOUT FAILING TEST FIRST. Tests-after prove nothing — you never saw them catch the bug. |
 | "This is too simple for TDD" | Simple code breaks. Test takes 30 seconds. |
 | "I'm just exploring" | Fine. Throw away the exploration, start with TDD. |
 | "The existing code has no tests" | You're improving it. Add tests as you go. |
