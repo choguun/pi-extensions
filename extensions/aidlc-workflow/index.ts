@@ -14,7 +14,6 @@
  */
 
 import * as fs from "node:fs";
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { Type } from "typebox";
@@ -345,8 +344,6 @@ const AidlcParams = Type.Object({
 // `.aidlc/sdd/` so they don't pollute `.aidlc/` (the canonical AIDLC
 // state dir) and can be safely `.gitignore`-d per-worktree.
 
-import { appendFileSync as _appendFileSync } from "node:fs";
-
 /** Pull the `### Task T-NNN: ...` block from `.aidlc/plan.md`. Returns null if not found. */
 function extractTaskBrief(planContent: string, taskId: string): string | null {
 	// Escape regex metacharacters in the task ID so e.g. `T-1.5` or `T-2(a)`
@@ -378,7 +375,7 @@ function parseReviewVerdict(reviewContent: string): "approved" | "needs_fix" | "
 /** Count how many `T-NNN-fix-report.md` files exist in `.aidlc/sdd/`. Caps the fix loop. */
 function countFixReports(taskId: string, sddDir: string): number {
 	try {
-		const files = readdirSync(sddDir) as string[];
+		const files = fs.readdirSync(sddDir) as string[];
 		const pattern = new RegExp(`^${taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-fix-report\\.md$`);
 		return files.filter((f) => pattern.test(f)).length;
 	} catch {
@@ -529,7 +526,7 @@ function appendProgressForTask(cwd: string, taskId: string, status: string, comm
 		const line = status === "BLOCKED"
 			? `- ${taskId}: BLOCKED (${reviewStatus ?? "no reason given"})\n`
 			: `- ${taskId}: ${status} (commits ${commitRange ?? "unknown"}, ${reviewStatus ?? "review pending"})\n`;
-		_appendFileSync(progressPath, line);
+		fs.appendFileSync(progressPath, line);
 	} catch (err) {
 		console.warn(`[aidlc] appendProgress failed for ${taskId}: ${err}`);
 	}
@@ -1436,7 +1433,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				const aidlcDir = path.join(cwd, AIDLC_DIR);
-				if (!existsSync(aidlcDir)) {
+				if (!fs.existsSync(aidlcDir)) {
 					return {
 						content: [{ type: "text", text: `Error: No \`${AIDLC_DIR}/\` directory in cwd. Run \`/aidlc start\` first.` }],
 						isError: true,
@@ -1445,7 +1442,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				const planPath = path.join(cwd, AIDLC_DIR, "plan.md");
-				if (!existsSync(planPath)) {
+				if (!fs.existsSync(planPath)) {
 					return {
 						content: [{ type: "text", text: "Error: `.aidlc/plan.md` not found — run `/plan` first." }],
 						isError: true,
@@ -1453,7 +1450,7 @@ export default function (pi: ExtensionAPI) {
 					};
 				}
 
-				const planContent = readFileSync(planPath, "utf8");
+				const planContent = fs.readFileSync(planPath, "utf-8");
 				const taskBrief = extractTaskBrief(planContent, taskId);
 				if (!taskBrief) {
 					return {
@@ -1465,7 +1462,7 @@ export default function (pi: ExtensionAPI) {
 
 				const sddDir = path.join(aidlcDir, "sdd");
 				try {
-					mkdirSync(sddDir, { recursive: true });
+					fs.mkdirSync(sddDir, { recursive: true });
 				} catch (err) {
 					return {
 						content: [{ type: "text", text: `Error: Cannot create \`.aidlc/sdd/\`: ${err instanceof Error ? err.message : String(err)}` }],
@@ -1480,9 +1477,9 @@ export default function (pi: ExtensionAPI) {
 				const fixReportPath = path.join(sddDir, `${taskId}-fix-report.md`);
 
 				// PHASE A: prepare implementer brief
-				if (!previousReport && !existsSync(reportPath)) {
+				if (!previousReport && !fs.existsSync(reportPath)) {
 					const brief = buildImplementerBrief(taskId, taskBrief, reportPath);
-					writeFileSync(briefPath, brief);
+					fs.writeFileSync(briefPath, brief);
 					return {
 						content: [{ type: "text", text: `**execute-task** — phase A: implementer brief written.\n\n- Brief: \`${briefPath}\`\n- Report target: \`${reportPath}\`\n\nDispatch an implementer subagent with the dispatch_hint (in details).` }],
 						details: {
@@ -1496,11 +1493,11 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				// PHASE B: prepare reviewer brief
-				const effectiveReportContent = previousReport ?? (existsSync(reportPath) ? readFileSync(reportPath, "utf8") : null);
-				if (effectiveReportContent && !previousReview && !existsSync(reviewPath)) {
+				const effectiveReportContent = previousReport ?? (fs.existsSync(reportPath) ? fs.readFileSync(reportPath, "utf-8") : null);
+				if (effectiveReportContent && !previousReview && !fs.existsSync(reviewPath)) {
 					const reviewerBriefPath = path.join(sddDir, `${taskId}-reviewer-brief.md`);
 					const brief = buildReviewerBrief(taskId, taskBrief, reportPath, reviewPath);
-					writeFileSync(reviewerBriefPath, brief);
+					fs.writeFileSync(reviewerBriefPath, brief);
 					return {
 						content: [{ type: "text", text: `**execute-task** — phase B: reviewer brief written.\n\n- Reviewer brief: \`${reviewerBriefPath}\`\n- Review target: \`${reviewPath}\`\n\nDispatch a code-reviewer subagent with the dispatch_hint (in details).` }],
 						details: {
@@ -1515,7 +1512,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				// PHASE C: evaluate review
-				const reviewContent = previousReview ?? (existsSync(reviewPath) ? readFileSync(reviewPath, "utf8") : null);
+				const reviewContent = previousReview ?? (fs.existsSync(reviewPath) ? fs.readFileSync(reviewPath, "utf-8") : null);
 				if (reviewContent) {
 					const verdict = parseReviewVerdict(reviewContent);
 
@@ -1544,7 +1541,7 @@ export default function (pi: ExtensionAPI) {
 						}
 						const fixBriefPath = path.join(sddDir, `${taskId}-fix-brief.md`);
 						const brief = buildFixBrief(taskId, reviewPath, fixReportPath);
-						writeFileSync(fixBriefPath, brief);
+						fs.writeFileSync(fixBriefPath, brief);
 						return {
 							content: [{ type: "text", text: `**execute-task** — phase C: needs_fix for ${taskId}. Fix brief written.\n\n- Fix brief: \`${fixBriefPath}\`\n- Fix report target: \`${fixReportPath}\`\n\nDispatch an implementer subagent with the dispatch_hint (in details).` }],
 							details: {
