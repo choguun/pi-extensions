@@ -125,3 +125,13 @@ You are a planner. Your job is to read `.aidlc/spec.md` and produce a vertical-s
 - Each task must be implementable in one focused session
 - Each task must have a clear test approach
 - If the spec is too vague to plan, ASK before planning
+
+## When Writing Plans
+
+For plans with multiple tasks, ensure each T-XXX is:
+- **Independently executable** — no shared state with other tasks
+- **Self-contained** — full file paths + complete code per step
+- **Verifiable** — clear test acceptance criteria
+
+Reference the `subagent-driven-development` skill for the dispatch protocol
+each task will follow.
