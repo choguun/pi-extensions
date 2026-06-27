@@ -322,7 +322,7 @@ const PhaseSchema = Type.Union([
 const AidlcParams = Type.Object({
 	action: Type.String({
 		description:
-			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd",
+			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan",
 	}),
 	feature: Type.Optional(Type.String({ description: "Feature name (for 'start')" })),
 });
@@ -808,9 +808,13 @@ export default function (pi: ExtensionAPI) {
 						content: [
 							{
 								type: "text",
-								text: [`**validate-spec**`, "", `- ✖ ${errors[0]}`, "", `Run \`/specify\` to write the spec first.`].join(
-									"\n",
-								),
+								text: [
+									`**validate-spec**`,
+									``,
+									`- ✖ ${errors[0]}`,
+									``,
+									`Run \`/specify\` to write the spec first.`,
+								].join("\n"),
 							},
 						],
 						details: { valid: false, errors, scenarioCount: 0 },
@@ -831,7 +835,7 @@ export default function (pi: ExtensionAPI) {
 				const valid = errors.length === 0;
 				const lines: string[] = [
 					`**validate-spec**`,
-					"",
+					``,
 					valid
 						? `- ✔ \`## Test Plan\` present with ${scenarios.length} ST-NNN scenario(s)`
 						: `- ✖ ${errors.length} issue(s):`,
@@ -846,11 +850,112 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			if (action === "validate-plan") {
+				// Enforce that every `### T-NNN` task in `.aidlc/plan.md`
+				// either references at least one `ST-NNN` scenario or is
+				// explicitly marked as `(non-test refactor)`. This is the
+				// planner's contract — every implementation task must be
+				// traceable back to a testable acceptance criterion. Pure
+				// refactors (rename, restructure) are exempt via the
+				// marker so they don't have to fabricate an ST link.
+				const planPath = path.join(cwd, AIDLC_DIR, "plan.md");
+				const errors: string[] = [];
+
+				if (!exists(planPath)) {
+					errors.push("plan.md not found in .aidlc/");
+					return {
+						content: [
+							{
+								type: "text",
+								text: [
+									`**validate-plan**`,
+									``,
+									`- ✖ ${errors[0]}`,
+									``,
+									`Run \`/plan\` to write the plan first.`,
+								].join("\n"),
+							},
+						],
+						details: { valid: false, errors, taskCount: 0, offendingTasks: [] },
+					};
+				}
+
+				const content = readFile(planPath) ?? "";
+
+				// Find every `### T-NNN:` task heading and the body that
+				// belongs to it (everything until the next `### T-NNN:` or
+				// end of file). For each, decide if it has at least one
+				// ST-NNN reference OR a (non-test refactor) marker.
+				//
+				// Line-based parsing is more robust than a single
+				// multiline regex with lazy quantifiers — the regex
+				// variant (originally tried) failed to advance past the
+				// first task because the lookahead consumed `\n` boundary
+				// chars in a way that confused `lastIndex`. Splitting by
+				// lines and walking heading positions is straightforward
+				// and easy to debug.
+				const planLines = content.split("\n");
+				const taskIndices: Array<{ line: number; id: string }> = [];
+				for (let i = 0; i < planLines.length; i++) {
+					const m = planLines[i].match(/^### (T-\d+):/);
+					if (m) taskIndices.push({ line: i, id: m[1] });
+				}
+				const tasks: Array<{ id: string; body: string; ok: boolean; reason?: string }> = [];
+				for (let k = 0; k < taskIndices.length; k++) {
+					// Include the heading line itself in `body` so markers
+					// like `(non-test refactor)` placed in the heading
+					// (the common style — `### T-001: rename foo (non-test refactor)`)
+					// are detected.
+					const start = taskIndices[k].line;
+					const end = k + 1 < taskIndices.length ? taskIndices[k + 1].line : planLines.length;
+					const body = planLines.slice(start, end).join("\n");
+					const hasStRef = /\bST-\d+\b/.test(body);
+					const isRefactor = /\(non-test refactor\)/i.test(body);
+					if (hasStRef || isRefactor) {
+						tasks.push({ id: taskIndices[k].id, body, ok: true });
+					} else {
+						tasks.push({
+							id: taskIndices[k].id,
+							body,
+							ok: false,
+							reason: `${taskIndices[k].id} references no ST-NNN scenario and has no \`(non-test refactor)\` marker`,
+						});
+					}
+				}
+
+				const offending = tasks.filter((t) => !t.ok);
+				for (const t of offending) {
+					if (t.reason) errors.push(t.reason);
+				}
+
+				const valid = errors.length === 0;
+				const lines: string[] = [
+					`**validate-plan**`,
+					``,
+					valid
+						? `- ✔ ${tasks.length} task(s) all reference ST-NNN scenarios (or are marked non-test refactor)`
+						: `- ✖ ${offending.length}/${tasks.length} task(s) missing ST-NNN reference:`,
+				];
+				if (!valid) {
+					for (const e of errors) lines.push(`  - ${e}`);
+				}
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: {
+						valid,
+						errors,
+						taskCount: tasks.length,
+						offendingTasks: offending.map((t) => t.id),
+					},
+				};
+			}
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd`,
+						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan`,
 					},
 				],
 				isError: true,
