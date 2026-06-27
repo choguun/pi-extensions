@@ -423,3 +423,23 @@ test("validate-tdd: untracked production file only → valid=false", async () =>
 		rmRepo(dir);
 	}
 });
+
+test("validate-tdd: non-git directory → valid=false, error mentions git", async () => {
+	// Temp dir WITHOUT `git init` — `git diff HEAD --numstat` will fail
+	// with "fatal: not a git repository", `tryRun` returns null, and the
+	// guard at index.ts:917-922 short-circuits with a clear error.
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aidlc-nogit-"));
+	try {
+		const result = await runAction(dir, "validate-tdd");
+		assert.equal(result.details.valid, false, `expected invalid, errors: ${JSON.stringify(result.details.errors)}`);
+		assert.ok(
+			result.details.errors.some((e: string) => /git/i.test(e)),
+			`expected error mentioning git, got: ${JSON.stringify(result.details.errors)}`,
+		);
+		// Counts should be zero in the early-return path.
+		assert.equal(result.details.productionLines, 0);
+		assert.equal(result.details.testLines, 0);
+	} finally {
+		rmRepo(dir);
+	}
+});

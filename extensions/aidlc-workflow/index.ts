@@ -322,7 +322,7 @@ const PhaseSchema = Type.Union([
 const AidlcParams = Type.Object({
 	action: Type.String({
 		description:
-			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan",
+			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd",
 	}),
 	feature: Type.Optional(Type.String({ description: "Feature name (for 'start')" })),
 });
