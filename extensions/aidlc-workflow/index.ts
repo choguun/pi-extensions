@@ -14,6 +14,7 @@
  */
 
 import * as fs from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { Type } from "typebox";
@@ -322,10 +323,217 @@ const PhaseSchema = Type.Union([
 const AidlcParams = Type.Object({
 	action: Type.String({
 		description:
-			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress",
+			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress, execute-task",
 	}),
 	feature: Type.Optional(Type.String({ description: "Feature name (for 'start')" })),
+	task_id: Type.Optional(Type.String({ description: "Task ID like T-001 (for 'execute-task')" })),
+	previous_report: Type.Optional(Type.String({ description: "Inline report content (for 'execute-task' — skip writing to disk)" })),
+	previous_review: Type.Optional(Type.String({ description: "Inline review content (for 'execute-task' — skip writing to disk)" })),
 });
+
+// =============================================================================
+// execute-task helpers (F6 — fresh-subagent-per-task orchestration)
+// =============================================================================
+//
+// State machine for the `aidlc execute-task` action. Three phases:
+//   A. No report on disk  → write an implementer brief, return dispatch hint
+//   B. Report, no review  → write a reviewer brief,     return dispatch hint
+//   C. Review exists      → parse verdict, route to approve / fix / blocked
+//
+// Each phase returns `{ phase, task_id, ...paths, dispatch_hint }` so the
+// caller can hand the dispatch_hint to a subagent tool. Files live under
+// `.aidlc/sdd/` so they don't pollute `.aidlc/` (the canonical AIDLC
+// state dir) and can be safely `.gitignore`-d per-worktree.
+
+import { appendFileSync as _appendFileSync } from "node:fs";
+
+/** Pull the `### Task T-NNN: ...` block from `.aidlc/plan.md`. Returns null if not found. */
+function extractTaskBrief(planContent: string, taskId: string): string | null {
+	// Escape regex metacharacters in the task ID so e.g. `T-1.5` or `T-2(a)`
+	// don't blow up `new RegExp`. T-NNN is already alphanumeric+dash but
+	// the planner may one day emit other IDs — be defensive.
+	const escapedId = taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const regex = new RegExp(`### Task ${escapedId}:.*?(?=### Task T-|$)`, "ms");
+	const match = planContent.match(regex);
+	return match ? match[0].trim() : null;
+}
+
+/**
+ * Parse the reviewer's verdict from a review file. Looks for `## Verdict`
+ * followed by `approved` / `needs_fix` / `blocked`. Returns `"blocked"`
+ * when the review is missing, malformed, or has an unknown verdict —
+ * "blocked" is the safe default (forces human review) rather than
+ * silently approving unparseable content.
+ */
+function parseReviewVerdict(reviewContent: string): "approved" | "needs_fix" | "blocked" {
+	const match = reviewContent.match(/##\s*Verdict\s*\n+(\w+)/i);
+	if (!match) return "blocked";
+	const verdict = match[1].toLowerCase().trim();
+	if (verdict.includes("approved")) return "approved";
+	if (verdict.includes("needs_fix") || verdict.includes("needs fix") || verdict.includes("needsfix")) return "needs_fix";
+	if (verdict.includes("blocked")) return "blocked";
+	return "blocked";
+}
+
+/** Count how many `T-NNN-fix-report.md` files exist in `.aidlc/sdd/`. Caps the fix loop. */
+function countFixReports(taskId: string, sddDir: string): number {
+	try {
+		const files = readdirSync(sddDir) as string[];
+		const pattern = new RegExp(`^${taskId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-fix-report\\.md$`);
+		return files.filter((f) => pattern.test(f)).length;
+	} catch {
+		return 0;
+	}
+}
+
+/** Build the implementer brief — what the implementer subagent reads. */
+function buildImplementerBrief(taskId: string, taskBrief: string, reportPath: string): string {
+	return `# Implementer Brief — ${taskId}
+
+## Task Description
+
+${taskBrief}
+
+## Before You Begin
+
+If anything in the task description is unclear, ask now. Otherwise proceed.
+
+## After Completion
+
+Write your report to \`${reportPath}\` following this contract:
+
+\`\`\`markdown
+# ${taskId} Report
+
+## Status
+DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED
+
+## Commits
+<list of commit hashes created for this task>
+
+## Test Summary
+\`npm test\` result: <one-line summary>
+
+## Concerns
+<any concerns about later tasks, or "none">
+\`\`\`
+
+Return ONLY status + commits + one-line test summary. Do NOT paste the full report into your reply.
+`;
+}
+
+/** Build the reviewer brief — what the reviewer subagent reads. */
+function buildReviewerBrief(taskId: string, taskBrief: string, reportPath: string, reviewPath: string): string {
+	return `# Reviewer Brief — ${taskId}
+
+## Task Being Reviewed
+
+${taskBrief}
+
+## Implementer's Report
+
+Read: \`${reportPath}\`
+
+## Your Job
+
+Write your review to \`${reviewPath}\` using this schema:
+
+\`\`\`markdown
+# ${taskId} Review
+
+## Verdict
+approved | needs_fix | blocked
+
+## Spec Compliance
+✅ / ❌ <findings against the spec/plan>
+
+## Code Quality
+✅ / ❌ <findings about code quality, naming, structure>
+
+## Findings (Critical / Important / Minor)
+- <each finding with file:line refs>
+
+## Recommendation
+Approve | Fix needed
+\`\`\`
+
+Return ONLY the verdict + a one-line summary. Do NOT paste the full review.
+`;
+}
+
+/** Build the fix brief — what the implementer subagent reads on a fix iteration. */
+function buildFixBrief(taskId: string, reviewPath: string, fixReportPath: string): string {
+	return `# Fix Brief — ${taskId}
+
+## Reviewer Findings
+
+Read the review at \`${reviewPath}\`. Address ALL Critical and Important findings. Minor findings are optional.
+
+## Constraints
+
+- Same task scope — don't expand beyond the original task
+- Maintain existing tests (don't break them)
+- TDD: write a failing test FIRST if adding new behavior
+- Keep commits atomic (one commit per logical change)
+
+## After Completion
+
+Write your fix report to \`${fixReportPath}\` following this contract:
+
+\`\`\`markdown
+# ${taskId} Fix Report
+
+## Status
+DONE | BLOCKED
+
+## Changes
+<list of files changed + commit hashes>
+
+## Findings Addressed
+<each Critical/Important finding → how addressed>
+
+## Findings Not Addressed
+<any findings skipped, with reason>
+\`\`\`
+
+Return ONLY status + commit hashes + one-line summary.
+`;
+}
+
+/**
+ * Find the most recent commits referencing this task ID (used to record
+ * the commit range in `.aidlc-progress.md` after approval). Returns
+ * "unknown" when no matching commits exist or git isn't available.
+ */
+function getCommitRangeForTask(taskId: string): string {
+	try {
+		const result = execSync(`git log --oneline -20 --grep="${taskId}" 2>/dev/null | head -3`, { encoding: "utf8" });
+		const lines = result.trim().split("\n").filter((l) => l.length > 0);
+		if (lines.length === 0) return "unknown";
+		const hashes = lines.map((l) => l.split(" ")[0]);
+		return `${hashes[hashes.length - 1]}..${hashes[0]}`;
+	} catch {
+		return "unknown";
+	}
+}
+
+/**
+ * Append a single line to `.aidlc-progress.md`. The ledger is the
+ * compaction-recovery record (see F12 in ARCHITECTURE). Errors are
+ * non-fatal — a write failure here shouldn't block the parent phase
+ * (the git log is the ground truth).
+ */
+function appendProgressForTask(cwd: string, taskId: string, status: string, commitRange?: string, reviewStatus?: string): void {
+	try {
+		const progressPath = path.join(cwd, ".aidlc-progress.md");
+		const line = status === "BLOCKED"
+			? `- ${taskId}: BLOCKED (${reviewStatus ?? "no reason given"})\n`
+			: `- ${taskId}: ${status} (commits ${commitRange ?? "unknown"}, ${reviewStatus ?? "review pending"})\n`;
+		_appendFileSync(progressPath, line);
+	} catch (err) {
+		console.warn(`[aidlc] appendProgress failed for ${taskId}: ${err}`);
+	}
+}
 
 // =============================================================================
 // Extension entry
@@ -1205,11 +1413,170 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
+			if (action === "execute-task") {
+				// F6 — fresh-subagent-per-task orchestration. 3-phase state
+				// machine driven by what's on disk in `.aidlc/sdd/`:
+				//   A. No report      → write implementer brief + dispatch hint
+				//   B. Report, no rev → write reviewer brief + dispatch hint
+				//   C. Review exists  → parse verdict → approve / fix / blocked
+				//
+				// Each call advances the task by exactly one phase. The
+				// caller (the orchestrator loop) is responsible for re-
+				// invoking `execute-task` after each subagent returns.
+				const taskId = params.task_id?.trim();
+				const previousReport = params.previous_report?.trim();
+				const previousReview = params.previous_review?.trim();
+
+				if (!taskId) {
+					return {
+						content: [{ type: "text", text: "Error: `task_id` is required for `execute-task`." }],
+						isError: true,
+						details: { valid: false, errors: ["task_id required"] },
+					};
+				}
+
+				const aidlcDir = path.join(cwd, AIDLC_DIR);
+				if (!existsSync(aidlcDir)) {
+					return {
+						content: [{ type: "text", text: `Error: No \`${AIDLC_DIR}/\` directory in cwd. Run \`/aidlc start\` first.` }],
+						isError: true,
+						details: { valid: false, errors: [`No ${AIDLC_DIR}/ directory in cwd`] },
+					};
+				}
+
+				const planPath = path.join(cwd, AIDLC_DIR, "plan.md");
+				if (!existsSync(planPath)) {
+					return {
+						content: [{ type: "text", text: "Error: `.aidlc/plan.md` not found — run `/plan` first." }],
+						isError: true,
+						details: { valid: false, errors: [".aidlc/plan.md not found — run /plan first"] },
+					};
+				}
+
+				const planContent = readFileSync(planPath, "utf8");
+				const taskBrief = extractTaskBrief(planContent, taskId);
+				if (!taskBrief) {
+					return {
+						content: [{ type: "text", text: `Error: Task ${taskId} not found in plan.md.` }],
+						isError: true,
+						details: { valid: false, errors: [`Task ${taskId} not found in plan.md`] },
+					};
+				}
+
+				const sddDir = path.join(aidlcDir, "sdd");
+				try {
+					mkdirSync(sddDir, { recursive: true });
+				} catch (err) {
+					return {
+						content: [{ type: "text", text: `Error: Cannot create \`.aidlc/sdd/\`: ${err instanceof Error ? err.message : String(err)}` }],
+						isError: true,
+						details: { valid: false, errors: [`Cannot create .aidlc/sdd/: ${err}`] },
+					};
+				}
+
+				const briefPath = path.join(sddDir, `${taskId}-brief.md`);
+				const reportPath = path.join(sddDir, `${taskId}-report.md`);
+				const reviewPath = path.join(sddDir, `${taskId}-review.md`);
+				const fixReportPath = path.join(sddDir, `${taskId}-fix-report.md`);
+
+				// PHASE A: prepare implementer brief
+				if (!previousReport && !existsSync(reportPath)) {
+					const brief = buildImplementerBrief(taskId, taskBrief, reportPath);
+					writeFileSync(briefPath, brief);
+					return {
+						content: [{ type: "text", text: `**execute-task** — phase A: implementer brief written.\n\n- Brief: \`${briefPath}\`\n- Report target: \`${reportPath}\`\n\nDispatch an implementer subagent with the dispatch_hint (in details).` }],
+						details: {
+							phase: "implementer",
+							task_id: taskId,
+							brief_path: briefPath,
+							report_path: reportPath,
+							dispatch_hint: `Use the subagent tool with agent="implementer" and task="Read the brief at ${briefPath} and follow it. Write your report to ${reportPath}."`,
+						},
+					};
+				}
+
+				// PHASE B: prepare reviewer brief
+				const effectiveReportContent = previousReport ?? (existsSync(reportPath) ? readFileSync(reportPath, "utf8") : null);
+				if (effectiveReportContent && !previousReview && !existsSync(reviewPath)) {
+					const reviewerBriefPath = path.join(sddDir, `${taskId}-reviewer-brief.md`);
+					const brief = buildReviewerBrief(taskId, taskBrief, reportPath, reviewPath);
+					writeFileSync(reviewerBriefPath, brief);
+					return {
+						content: [{ type: "text", text: `**execute-task** — phase B: reviewer brief written.\n\n- Reviewer brief: \`${reviewerBriefPath}\`\n- Review target: \`${reviewPath}\`\n\nDispatch a code-reviewer subagent with the dispatch_hint (in details).` }],
+						details: {
+							phase: "reviewer",
+							task_id: taskId,
+							report_path: reportPath,
+							review_path: reviewPath,
+							reviewer_brief_path: reviewerBriefPath,
+							dispatch_hint: `Use the subagent tool with agent="code-reviewer" and task="Read the reviewer brief at ${reviewerBriefPath} and write your verdict to ${reviewPath}."`,
+						},
+					};
+				}
+
+				// PHASE C: evaluate review
+				const reviewContent = previousReview ?? (existsSync(reviewPath) ? readFileSync(reviewPath, "utf8") : null);
+				if (reviewContent) {
+					const verdict = parseReviewVerdict(reviewContent);
+
+					if (verdict === "approved") {
+						const commitRange = getCommitRangeForTask(taskId);
+						appendProgressForTask(cwd, taskId, "complete", commitRange, "review clean");
+						return {
+							content: [{ type: "text", text: `**execute-task** — phase C: review approved for ${taskId}. Progress recorded.\n\n- Commits: ${commitRange}\n- Ledger: \`.aidlc-progress.md\`` }],
+							details: { phase: "complete", task_id: taskId, verdict: "approved", commit_range: commitRange },
+						};
+					}
+
+					if (verdict === "needs_fix") {
+						const fixCount = countFixReports(taskId, sddDir);
+						if (fixCount >= 1) {
+							appendProgressForTask(cwd, taskId, "BLOCKED", undefined, "1 fix attempt failed; needs human review");
+							return {
+								content: [{ type: "text", text: `**execute-task** — phase C: needs_fix but max fix iterations (1) exceeded for ${taskId}. Progress marked BLOCKED.` }],
+								details: {
+									phase: "blocked",
+									task_id: taskId,
+									verdict: "needs_fix",
+									reason: "Max fix iterations (1) exceeded",
+								},
+							};
+						}
+						const fixBriefPath = path.join(sddDir, `${taskId}-fix-brief.md`);
+						const brief = buildFixBrief(taskId, reviewPath, fixReportPath);
+						writeFileSync(fixBriefPath, brief);
+						return {
+							content: [{ type: "text", text: `**execute-task** — phase C: needs_fix for ${taskId}. Fix brief written.\n\n- Fix brief: \`${fixBriefPath}\`\n- Fix report target: \`${fixReportPath}\`\n\nDispatch an implementer subagent with the dispatch_hint (in details).` }],
+							details: {
+								phase: "fix",
+								task_id: taskId,
+								fix_brief_path: fixBriefPath,
+								fix_report_path: fixReportPath,
+								dispatch_hint: `Use the subagent tool with agent="implementer" and task="Read the fix brief at ${fixBriefPath} and apply the fixes. Write your fix report to ${fixReportPath}."`,
+							},
+						};
+					}
+
+					// verdict === "blocked" or unparseable
+					appendProgressForTask(cwd, taskId, "BLOCKED", undefined, `review unparseable or blocked: ${reviewContent.slice(0, 200)}`);
+					return {
+						content: [{ type: "text", text: `**execute-task** — phase C: review blocked or unparseable for ${taskId}. Progress marked BLOCKED.\n\n- Verdict: ${verdict}\n- Reason: Review blocked or unparseable` }],
+						details: { phase: "blocked", task_id: taskId, verdict, reason: "Review blocked or unparseable" },
+					};
+				}
+
+				return {
+					content: [{ type: "text", text: `Error: Unexpected state for ${taskId} — no action applicable (report missing? review missing?). Pass \`previous_report\` / \`previous_review\` or write the artifact to \`.aidlc/sdd/\` first.` }],
+					isError: true,
+					details: { valid: false, errors: ["Unexpected state — no action applicable"] },
+				};
+			}
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress`,
+						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd, append-progress, read-progress, execute-task`,
 					},
 				],
 				isError: true,
