@@ -463,3 +463,7 @@ test/progress.test.ts
 
 2026-06-26 | spec drafted — 8-question brainstorming session resolved all major design decisions (approach=C mix, F12=A replace SDD, F8 scope=C agent+skill, F9 scope=B full lifecycle, bundling=A one PR, F8/F9=B verbatim+adapted, F12 writer=A tool writes, F12 location+format=A root+rich). Five design sections approved (architecture, components, data flow, error handling, testing). Spec written and awaiting user review.
 2026-06-26 | spec approved — user approved all 8 brainstorming decisions + 5 design sections. Status updated from draft to approved. Spec is ready for writing-plans.
+
+## Timeline (continued)
+
+2026-06-26 | Tier 3 polish bundle shipped — F8 receiving-code-review (verbatim) + pr-feedback-handler HARD-GATE; F9 finishing-a-development-branch (adapted for AIDLC worktrees) + shipper.md lifecycle rewrite; F12 .aidlc-progress.md ledger via aidlc tool (append-progress + read-progress) + implementer integration. 21 new tests (15 in skills-polish, 6 in progress). 175 total tests passing. 2 review fixes (W3 .worktrees leftover in F9; F12 schema warning deferred to F13).
