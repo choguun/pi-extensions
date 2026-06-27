@@ -138,6 +138,7 @@ When feedback IS correct:
 
 ❌ "You're absolutely right!"
 ❌ "Great point!"
+❌ "Thanks!"
 ❌ "Thanks for catching that!"
 ❌ "Thanks for [anything]"
 ❌ ANY gratitude expression
