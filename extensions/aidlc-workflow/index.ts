@@ -321,7 +321,8 @@ const PhaseSchema = Type.Union([
 
 const AidlcParams = Type.Object({
 	action: Type.String({
-		description: "Action: start, status, sync, classify-comments, next",
+		description:
+			"Action: start, status, sync, classify-comments, classify, next, verify, triage, validate-spec, validate-plan, validate-tdd",
 	}),
 	feature: Type.Optional(Type.String({ description: "Feature name (for 'start')" })),
 });
@@ -791,11 +792,65 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
+			if (action === "validate-spec") {
+				// Enforce that `.aidlc/spec.md` has a `## Test Plan` section
+				// with at least one `### ST-NNN` scenario. The TDD skill
+				// and the spec-writer agent both rely on this contract —
+				// the planner uses `ST-NNN` references to bind tasks to
+				// testable scenarios, so a missing Test Plan breaks the
+				// downstream validate-plan check too.
+				const specPath = path.join(cwd, AIDLC_DIR, "spec.md");
+				const errors: string[] = [];
+
+				if (!exists(specPath)) {
+					errors.push("spec.md not found in .aidlc/");
+					return {
+						content: [
+							{
+								type: "text",
+								text: [`**validate-spec**`, "", `- ✖ ${errors[0]}`, "", `Run \`/specify\` to write the spec first.`].join(
+									"\n",
+								),
+							},
+						],
+						details: { valid: false, errors, scenarioCount: 0 },
+					};
+				}
+
+				const content = readFile(specPath) ?? "";
+
+				if (!/^## Test Plan/m.test(content)) {
+					errors.push("Missing `## Test Plan` section in spec.md");
+				}
+
+				const scenarios = content.match(/^### ST-\d+:/gm) ?? [];
+				if (scenarios.length === 0) {
+					errors.push("No ST-NNN scenarios found in `## Test Plan` (need at least one `### ST-001: ...` heading)");
+				}
+
+				const valid = errors.length === 0;
+				const lines: string[] = [
+					`**validate-spec**`,
+					"",
+					valid
+						? `- ✔ \`## Test Plan\` present with ${scenarios.length} ST-NNN scenario(s)`
+						: `- ✖ ${errors.length} issue(s):`,
+				];
+				if (!valid) {
+					for (const e of errors) lines.push(`  - ${e}`);
+				}
+
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: { valid, errors, scenarioCount: scenarios.length },
+				};
+			}
+
 			return {
 				content: [
 					{
 						type: "text",
-						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next`,
+						text: `Unknown action: ${action}. Use: status, start, sync, classify-comments, next, verify, triage, validate-spec, validate-plan, validate-tdd`,
 					},
 				],
 				isError: true,
